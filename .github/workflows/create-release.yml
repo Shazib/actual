@@ -1,0 +1,31 @@
+name: Create Pre-Release
+
+on:
+  pull_request:
+    types:
+    - closed
+
+jobs:
+  if_merged:
+    runs-on: windows-latest
+    if: |
+      github.event.pull_request.merged == true
+      startsWith(github.head_ref, 'release/') == true
+    steps:
+      - uses: actions/checkout@v3
+      - name: Set up environment
+        uses: ./.github/actions/setup
+      - name: Build Electron
+        run: ./bin/package-electron
+      - name: Upload Build
+        uses: actions/upload-artifact@v3
+        with:
+          name: actual-electron-windows-latest
+          path: packages/desktop-electron/dist/*.exe
+      - name: Automatic Release
+        uses: marvinpinto/action-automatic-releases@v1.2.1
+        with:
+          draft: true
+          prerelease: true
+          title: "Pre-Release Build"
+          files: packages/desktop-electron/dist/*.exe
