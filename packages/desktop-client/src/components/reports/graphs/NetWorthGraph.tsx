@@ -1,3 +1,4 @@
+// @ts-strict-ignore
 import React from 'react';
 
 import { css } from 'glamor';
@@ -11,29 +12,30 @@ import {
   ResponsiveContainer,
 } from 'recharts';
 
+import { usePrivacyMode } from '../../../hooks/usePrivacyMode';
+import { useResponsive } from '../../../ResponsiveProvider';
 import { theme } from '../../../style';
 import { type CSSProperties } from '../../../style';
-import AlignedText from '../../common/AlignedText';
-import Container from '../Container';
-import numberFormatterTooltip from '../numberFormatter';
+import { AlignedText } from '../../common/AlignedText';
+import { Container } from '../Container';
+import { numberFormatterTooltip } from '../numberFormatter';
 
 type NetWorthGraphProps = {
   style?: CSSProperties;
   graphData;
   compact: boolean;
-  domain?: {
-    y?: [number, number];
-  };
 };
 
-function NetWorthGraph({
+export function NetWorthGraph({
   style,
   graphData,
   compact,
-  domain,
 }: NetWorthGraphProps) {
+  const privacyMode = usePrivacyMode();
+  const { isNarrowWidth } = useResponsive();
+
   const tickFormatter = tick => {
-    return `${Math.round(tick).toLocaleString()}`; // Formats the tick values as strings with commas
+    return privacyMode ? '...' : `${Math.round(tick).toLocaleString()}`; // Formats the tick values as strings with commas
   };
 
   const gradientOffset = () => {
@@ -65,11 +67,10 @@ function NetWorthGraph({
   type CustomTooltipProps = {
     active?: boolean;
     payload?: PayloadItem[];
-    label?: string;
   };
 
   // eslint-disable-next-line react/no-unstable-nested-components
-  const CustomTooltip = ({ active, payload, label }: CustomTooltipProps) => {
+  const CustomTooltip = ({ active, payload }: CustomTooltipProps) => {
     if (active && payload && payload.length) {
       return (
         <div
@@ -79,8 +80,8 @@ function NetWorthGraph({
               pointerEvents: 'none',
               borderRadius: 2,
               boxShadow: '0 1px 6px rgba(0, 0, 0, .20)',
-              backgroundColor: theme.menuAutoCompleteBackground,
-              color: theme.menuAutoCompleteText,
+              backgroundColor: theme.menuBackground,
+              color: theme.menuItemText,
               padding: 10,
             },
             style,
@@ -112,11 +113,10 @@ function NetWorthGraph({
         ...(compact && { height: 'auto' }),
       }}
     >
-      {(width, height, portalHost) =>
+      {(width, height) =>
         graphData && (
           <ResponsiveContainer>
-            <div>
-              {!compact && <div style={{ marginTop: '15px' }} />}
+            <div style={{ ...(!compact && { marginTop: '15px' }) }}>
               <AreaChart
                 width={width}
                 height={height}
@@ -126,19 +126,27 @@ function NetWorthGraph({
                 {compact ? null : (
                   <CartesianGrid strokeDasharray="3 3" vertical={false} />
                 )}
-                {compact ? null : <XAxis dataKey="x" />}
-                {compact ? null : (
-                  <YAxis
-                    dataKey="y"
-                    domain={['auto', 'auto']}
-                    tickFormatter={tickFormatter}
+                <XAxis
+                  dataKey="x"
+                  hide={compact}
+                  tick={{ fill: theme.pageText }}
+                  tickLine={{ stroke: theme.pageText }}
+                />
+                <YAxis
+                  dataKey="y"
+                  domain={['auto', 'auto']}
+                  hide={compact}
+                  tickFormatter={tickFormatter}
+                  tick={{ fill: theme.pageText }}
+                  tickLine={{ stroke: theme.pageText }}
+                />
+                {(!isNarrowWidth || !compact) && (
+                  <Tooltip
+                    content={<CustomTooltip />}
+                    formatter={numberFormatterTooltip}
+                    isAnimationActive={false}
                   />
                 )}
-                <Tooltip
-                  content={<CustomTooltip />}
-                  formatter={numberFormatterTooltip}
-                  isAnimationActive={false}
-                />
                 <defs>
                   <linearGradient id="splitColor" x1="0" y1="0" x2="0" y2="1">
                     <stop
@@ -172,5 +180,3 @@ function NetWorthGraph({
     </Container>
   );
 }
-
-export default NetWorthGraph;

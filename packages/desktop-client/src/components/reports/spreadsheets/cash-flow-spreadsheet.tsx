@@ -1,13 +1,16 @@
+// @ts-strict-ignore
 import React from 'react';
 
 import * as d from 'date-fns';
 
-import q from 'loot-core/src/client/query-helpers';
+import { type useSpreadsheet } from 'loot-core/src/client/SpreadsheetProvider';
 import { send } from 'loot-core/src/platform/client/fetch';
 import * as monthUtils from 'loot-core/src/shared/months';
+import { q } from 'loot-core/src/shared/query';
 import { integerToCurrency, integerToAmount } from 'loot-core/src/shared/util';
+import { type RuleConditionEntity } from 'loot-core/types/models';
 
-import AlignedText from '../../common/AlignedText';
+import { AlignedText } from '../../common/AlignedText';
 import { runAll, indexCashFlow } from '../util';
 
 export function simpleCashFlow(start, end) {
@@ -17,12 +20,7 @@ export function simpleCashFlow(start, end) {
         .filter({
           $and: [{ date: { $gte: start } }, { date: { $lte: end } }],
           'account.offbudget': false,
-          $or: [
-            {
-              'payee.transfer_acct.offbudget': true,
-              'payee.transfer_acct': null,
-            },
-          ],
+          'payee.transfer_acct': null,
         })
         .calculate({ $sum: '$amount' });
     }
@@ -45,22 +43,25 @@ export function simpleCashFlow(start, end) {
 }
 
 export function cashFlowByDate(
-  start,
-  end,
-  isConcise,
-  conditions = [],
-  conditionsOp,
+  start: string,
+  end: string,
+  isConcise: boolean,
+  conditions: RuleConditionEntity[] = [],
+  conditionsOp: 'and' | 'or',
 ) {
-  return async (spreadsheet, setData) => {
-    let { filters } = await send('make-filters-from-conditions', {
+  return async (
+    spreadsheet: ReturnType<typeof useSpreadsheet>,
+    setData: (data: ReturnType<typeof recalculate>) => void,
+  ) => {
+    const { filters } = await send('make-filters-from-conditions', {
       conditions: conditions.filter(cond => !cond.customName),
     });
     const conditionsOpKey = conditionsOp === 'or' ? '$or' : '$and';
 
-    function makeQuery(where) {
-      let query = q('transactions')
+    function makeQuery() {
+      const query = q('transactions')
         .filter({
-          [conditionsOpKey]: [...filters],
+          [conditionsOpKey]: filters,
         })
         .filter({
           $and: [
@@ -98,8 +99,8 @@ export function cashFlowByDate(
             'account.offbudget': false,
           })
           .calculate({ $sum: '$amount' }),
-        makeQuery('amount > 0').filter({ amount: { $gt: 0 } }),
-        makeQuery('amount < 0').filter({ amount: { $lt: 0 } }),
+        makeQuery().filter({ amount: { $gt: 0 } }),
+        makeQuery().filter({ amount: { $lt: 0 } }),
       ],
       data => {
         setData(recalculate(data, start, end, isConcise));
@@ -109,11 +110,11 @@ export function cashFlowByDate(
 }
 
 function recalculate(data, start, end, isConcise) {
-  let [startingBalance, income, expense] = data;
-  let convIncome = income.map(t => {
+  const [startingBalance, income, expense] = data;
+  const convIncome = income.map(t => {
     return { ...t, isTransfer: t.isTransfer !== null };
   });
-  let convExpense = expense.map(t => {
+  const convExpense = expense.map(t => {
     return { ...t, isTransfer: t.isTransfer !== null };
   });
   const dates = isConcise
@@ -179,6 +180,10 @@ function recalculate(data, start, end, isConcise) {
 
       res.income.push({ x, y: integerToAmount(income) });
       res.expenses.push({ x, y: integerToAmount(expense) });
+      res.transfers.push({
+        x,
+        y: integerToAmount(creditTransfers + debitTransfers),
+      });
       res.balances.push({
         x,
         y: integerToAmount(balance),
@@ -187,7 +192,7 @@ function recalculate(data, start, end, isConcise) {
       });
       return res;
     },
-    { expenses: [], income: [], balances: [] },
+    { expenses: [], income: [], transfers: [], balances: [] },
   );
 
   const { balances } = graphData;

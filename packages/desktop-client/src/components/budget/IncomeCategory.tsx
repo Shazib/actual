@@ -1,3 +1,4 @@
+// @ts-strict-ignore
 import React, { type ComponentProps } from 'react';
 
 import { type CategoryEntity } from 'loot-core/src/types/models';
@@ -11,8 +12,8 @@ import {
 } from '../sort';
 import { Row } from '../table';
 
-import RenderMonths from './RenderMonths';
-import SidebarCategory from './SidebarCategory';
+import { RenderMonths } from './RenderMonths';
+import { SidebarCategory } from './SidebarCategory';
 
 type IncomeCategoryProps = {
   cat: CategoryEntity;
@@ -20,16 +21,16 @@ type IncomeCategoryProps = {
   editingCell: { id: string; cell: string } | null;
   MonthComponent: ComponentProps<typeof RenderMonths>['component'];
   onEditName: ComponentProps<typeof SidebarCategory>['onEditName'];
-  onEditMonth?: (id: string, monthIndex: number) => void;
+  onEditMonth?: (id: string, month: string) => void;
   onSave: ComponentProps<typeof SidebarCategory>['onSave'];
   onDelete: ComponentProps<typeof SidebarCategory>['onDelete'];
   onDragChange: OnDragChangeCallback<CategoryEntity>;
-  onBudgetAction: (idx: number, action: string, arg: unknown) => void;
+  onBudgetAction: (month: string, action: string, arg: unknown) => void;
   onReorder: OnDropCallback;
-  onShowActivity: (name: string, id: string, idx: number) => void;
+  onShowActivity: (id: string, month: string) => void;
 };
 
-function IncomeCategory({
+export function IncomeCategory({
   cat,
   isLast,
   editingCell,
@@ -43,14 +44,14 @@ function IncomeCategory({
   onReorder,
   onShowActivity,
 }: IncomeCategoryProps) {
-  let { dragRef } = useDraggable({
+  const { dragRef } = useDraggable({
     type: 'income-category',
     onDragChange,
     item: cat,
     canDrag: editingCell === null,
   });
 
-  let { dropRef, dropPos } = useDroppable({
+  const { dropRef, dropPos } = useDroppable({
     types: 'income-category',
     id: cat.id,
     onDrop: onReorder,
@@ -75,7 +76,7 @@ function IncomeCategory({
       />
       <RenderMonths
         component={MonthComponent}
-        editingIndex={
+        editingMonth={
           editingCell && editingCell.id === cat.id && editingCell.cell
         }
         args={{
@@ -89,5 +90,3 @@ function IncomeCategory({
     </Row>
   );
 }
-
-export default IncomeCategory;

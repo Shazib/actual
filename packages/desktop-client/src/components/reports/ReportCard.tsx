@@ -1,10 +1,26 @@
-import React from 'react';
+import React, { type ReactNode } from 'react';
 
-import { theme } from '../../style';
-import AnchorLink from '../common/AnchorLink';
-import View from '../common/View';
+import { type CustomReportEntity } from 'loot-core/src/types/models';
 
-export default function ReportCard({ flex, to, style, children }) {
+import { type CSSProperties, theme } from '../../style';
+import { Link } from '../common/Link';
+import { View } from '../common/View';
+
+type ReportCardProps = {
+  to: string;
+  children: ReactNode;
+  report?: CustomReportEntity;
+  flex?: string;
+  style?: CSSProperties;
+};
+
+export function ReportCard({
+  to,
+  report,
+  children,
+  flex,
+  style,
+}: ReportCardProps) {
   const containerProps = { flex, margin: 15 };
 
   const content = (
@@ -31,12 +47,13 @@ export default function ReportCard({ flex, to, style, children }) {
 
   if (to) {
     return (
-      <AnchorLink
+      <Link
         to={to}
-        style={{ textDecoration: 'none', flex, ...containerProps }}
+        report={report}
+        style={{ textDecoration: 'none', ...containerProps }}
       >
         {content}
-      </AnchorLink>
+      </Link>
     );
   }
   return content;

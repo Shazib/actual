@@ -1,8 +1,184 @@
+// @ts-strict-ignore
 import * as monthUtils from '../../../shared/months';
 import { extractScheduleConds } from '../../../shared/schedules';
 import * as db from '../../db';
-import { getRuleForSchedule, getNextDate } from '../../schedules/app';
+import {
+  getRuleForSchedule,
+  getNextDate,
+  getDateWithSkippedWeekend,
+} from '../../schedules/app';
 import { isReflectBudget } from '../actions';
+
+async function createScheduleList(template, current_month, category) {
+  const t = [];
+  const errors = [];
+
+  for (let ll = 0; ll < template.length; ll++) {
+    const { id: sid, completed: complete } = await db.first(
+      'SELECT * FROM schedules WHERE name = ? AND tombstone = 0',
+      [template[ll].name],
+    );
+    const rule = await getRuleForSchedule(sid);
+    const conditions = rule.serialize().conditions;
+    const { date: dateConditions, amount: amountCondition } =
+      extractScheduleConds(conditions);
+    const scheduleAmount =
+      amountCondition.op === 'isbetween'
+        ? Math.round(amountCondition.value.num1 + amountCondition.value.num2) /
+          2
+        : amountCondition.value;
+    const { amount: postRuleAmount, subtransactions } = rule.execActions({
+      amount: scheduleAmount,
+      category: category.id,
+      subtransactions: [],
+    });
+    const categorySubtransactions = subtransactions?.filter(
+      t => t.category === category.id,
+    );
+
+    // Unless the current category is relevant to the schedule, target the post-rule amount.
+    const sign = category.is_income ? 1 : -1;
+    const target =
+      sign *
+      (categorySubtransactions?.length
+        ? categorySubtransactions.reduce((acc, t) => acc + t.amount, 0)
+        : postRuleAmount ?? scheduleAmount);
+
+    const next_date_string = getNextDate(
+      dateConditions,
+      monthUtils._parse(current_month),
+    );
+    const target_interval = dateConditions.value.interval
+      ? dateConditions.value.interval
+      : 1;
+    const target_frequency = dateConditions.value.frequency;
+    const isRepeating =
+      Object(dateConditions.value) === dateConditions.value &&
+      'frequency' in dateConditions.value;
+    const num_months = monthUtils.differenceInCalendarMonths(
+      next_date_string,
+      current_month,
+    );
+    if (num_months < 0) {
+      //non-repeating schedules could be negative
+      errors.push(`Schedule ${template[ll].name} is in the Past.`);
+    } else {
+      t.push({
+        target,
+        next_date_string,
+        target_interval,
+        target_frequency,
+        num_months,
+        completed: complete,
+        //started,
+        full: template[ll].full === null ? false : template[ll].full,
+        repeat: isRepeating,
+        name: template[ll].name,
+      });
+      if (!complete) {
+        if (isRepeating) {
+          let monthlyTarget = 0;
+          const nextMonth = monthUtils.addMonths(
+            current_month,
+            t[t.length - 1].num_months + 1,
+          );
+          let nextBaseDate = getNextDate(
+            dateConditions,
+            monthUtils._parse(current_month),
+            true,
+          );
+          let nextDate = dateConditions.value.skipWeekend
+            ? monthUtils.dayFromDate(
+                getDateWithSkippedWeekend(
+                  monthUtils._parse(nextBaseDate),
+                  dateConditions.value.weekendSolveMode,
+                ),
+              )
+            : nextBaseDate;
+          while (nextDate < nextMonth) {
+            monthlyTarget += -target;
+            const currentDate = nextBaseDate;
+            const oneDayLater = monthUtils.addDays(nextBaseDate, 1);
+            nextBaseDate = getNextDate(
+              dateConditions,
+              monthUtils._parse(oneDayLater),
+              true,
+            );
+            nextDate = dateConditions.value.skipWeekend
+              ? monthUtils.dayFromDate(
+                  getDateWithSkippedWeekend(
+                    monthUtils._parse(nextBaseDate),
+                    dateConditions.value.weekendSolveMode,
+                  ),
+                )
+              : nextBaseDate;
+            const diffDays = monthUtils.differenceInCalendarDays(
+              nextBaseDate,
+              currentDate,
+            );
+            if (!diffDays) {
+              // This can happen if the schedule has an end condition.
+              break;
+            }
+          }
+          t[t.length - 1].target = -monthlyTarget;
+        }
+      } else {
+        errors.push(
+          `Schedule ${t[ll].name} is not active during the month in question.`,
+        );
+      }
+    }
+  }
+  return { t: t.filter(c => c.completed === 0), errors };
+}
+
+async function getPayMonthOfTotal(t) {
+  //return the contribution amounts of full or every month type schedules
+  let total = 0;
+  const schedules = t.filter(c => c.num_months === 0);
+  for (let ll = 0; ll < schedules.length; ll++) {
+    total += schedules[ll].target;
+  }
+  return total;
+}
+
+async function getSinkingContributionTotal(t, remainder, last_month_balance) {
+  //return the contribution amount if there is a balance carried in the category
+  let total = 0;
+  for (let ll = 0; ll < t.length; ll++) {
+    remainder =
+      ll === 0 ? t[ll].target - last_month_balance : t[ll].target - remainder;
+    let tg = 0;
+    if (remainder >= 0) {
+      tg = remainder;
+      remainder = 0;
+    } else {
+      tg = 0;
+      remainder = Math.abs(remainder);
+    }
+    total += tg / (t[ll].num_months + 1);
+  }
+  return total;
+}
+
+async function getSinkingBaseContributionTotal(t) {
+  //return only the base contribution of each schedule
+  let total = 0;
+  for (let ll = 0; ll < t.length; ll++) {
+    total += t[ll].target / t[ll].target_interval;
+  }
+  return total;
+}
+
+async function getSinkingTotal(t) {
+  //sum the total of all upcoming schedules
+  let total = 0;
+  for (let ll = 0; ll < t.length; ll++) {
+    total += t[ll].target;
+  }
+  return total;
+}
 
 export async function goalsSchedule(
   scheduleFlag,
@@ -13,169 +189,52 @@ export async function goalsSchedule(
   last_month_balance,
   to_budget,
   errors,
+  category,
 ) {
   if (!scheduleFlag) {
     scheduleFlag = true;
-    let template = template_lines.filter(t => t.type === 'schedule');
+    const template = template_lines.filter(t => t.type === 'schedule');
     //in the case of multiple templates per category, schedules may have wrong priority level
-    let t = [];
-    let totalScheduledGoal = 0;
 
-    for (let ll = 0; ll < template.length; ll++) {
-      let { id: sid, completed: complete } = await db.first(
-        'SELECT * FROM schedules WHERE name = ?',
-        [template[ll].name],
+    const t = await createScheduleList(template, current_month, category);
+    errors = errors.concat(t.errors);
+
+    const isPayMonthOf = c =>
+      c.full ||
+      (c.target_frequency === 'monthly' &&
+        c.target_interval === 1 &&
+        c.num_months === 0) ||
+      (c.target_frequency === 'weekly' &&
+        c.target_interval >= 0 &&
+        c.num_months === 0) ||
+      c.target_frequency === 'daily' ||
+      isReflectBudget();
+
+    const t_payMonthOf = t.t.filter(isPayMonthOf);
+    const t_sinking = t.t
+      .filter(c => !isPayMonthOf(c))
+      .sort((a, b) => a.next_date_string.localeCompare(b.next_date_string));
+    const totalPayMonthOf = await getPayMonthOfTotal(t_payMonthOf);
+    const totalSinking = await getSinkingTotal(t_sinking);
+    const totalSinkingBaseContribution =
+      await getSinkingBaseContributionTotal(t_sinking);
+
+    if (balance >= totalSinking + totalPayMonthOf) {
+      to_budget += Math.round(totalPayMonthOf + totalSinkingBaseContribution);
+    } else {
+      const totalSinkingContribution = await getSinkingContributionTotal(
+        t_sinking,
+        remainder,
+        last_month_balance,
       );
-      console.log(complete);
-      let rule = await getRuleForSchedule(sid);
-      let conditions = rule.serialize().conditions;
-      let { date: dateConditions, amount: amountCondition } =
-        extractScheduleConds(conditions);
-      let target =
-        amountCondition.op === 'isbetween'
-          ? -Math.round(
-              amountCondition.value.num1 + amountCondition.value.num2,
-            ) / 2
-          : -amountCondition.value;
-      let next_date_string = getNextDate(
-        dateConditions,
-        monthUtils._parse(current_month),
-      );
-      let target_interval = dateConditions.value.interval
-        ? dateConditions.value.interval
-        : 1;
-      let target_frequency = dateConditions.value.frequency;
-      let isRepeating =
-        Object(dateConditions.value) === dateConditions.value &&
-        'frequency' in dateConditions.value;
-      let num_months = monthUtils.differenceInCalendarMonths(
-        next_date_string,
-        current_month,
-      );
-      t.push({
-        template: template[ll],
-        target: target,
-        next_date_string: next_date_string,
-        target_interval: target_interval,
-        target_frequency: target_frequency,
-        num_months: num_months,
-        completed: complete,
-      });
-      if (!complete) {
-        if (isRepeating) {
-          let monthlyTarget = 0;
-          let next_month = monthUtils.addMonths(
-            current_month,
-            t[ll].num_months + 1,
-          );
-          let next_date = getNextDate(
-            dateConditions,
-            monthUtils._parse(current_month),
-          );
-          while (next_date < next_month) {
-            monthlyTarget += -target;
-            let current_date = next_date;
-            next_date = monthUtils.addDays(next_date, 1);
-            next_date = getNextDate(
-              dateConditions,
-              monthUtils._parse(next_date),
-            );
-            let diffDays = monthUtils.differenceInCalendarDays(
-              next_date,
-              current_date,
-            );
-            if (!diffDays) {
-              next_date = monthUtils.addDays(next_date, 3);
-              next_date = getNextDate(
-                dateConditions,
-                monthUtils._parse(next_date),
-              );
-            }
-          }
-          t[ll].target = -monthlyTarget;
-          totalScheduledGoal += target;
-        }
+      if (t_sinking.length === 0) {
+        to_budget +=
+          Math.round(totalPayMonthOf + totalSinkingContribution) -
+          last_month_balance;
       } else {
-        errors.push(`Schedule ${t[ll].template.name} is a completed schedule.`);
+        to_budget += Math.round(totalPayMonthOf + totalSinkingContribution);
       }
     }
-
-    t = t.filter(t => t.completed === 0);
-    t = t.sort((a, b) => b.target - a.target);
-
-    let increment = 0;
-    if (balance >= totalScheduledGoal) {
-      for (let ll = 0; ll < t.length; ll++) {
-        if (t[ll].num_months < 0) {
-          errors.push(
-            `Non-repeating schedule ${t[ll].template.name} was due on ${t[ll].next_date_string}, which is in the past.`,
-          );
-          break;
-        }
-        if (
-          (t[ll].template.full && t[ll].num_months === 0) ||
-          t[ll].target_frequency === 'weekly' ||
-          t[ll].target_frequency === 'daily'
-        ) {
-          increment += t[ll].target;
-        } else if (t[ll].template.full && t[ll].num_months > 0) {
-          increment += 0;
-        } else {
-          increment += t[ll].target / t[ll].target_interval;
-        }
-      }
-    } else if (balance < totalScheduledGoal) {
-      for (let ll = 0; ll < t.length; ll++) {
-        if (isReflectBudget()) {
-          if (!t[ll].template.full) {
-            errors.push(
-              `Report budgets require the full option for Schedules.`,
-            );
-            break;
-          }
-          if (t[ll].template.full && t[ll].num_months === 0) {
-            to_budget += t[ll].target;
-          }
-        }
-        if (!isReflectBudget()) {
-          if (t[ll].num_months < 0) {
-            errors.push(
-              `Non-repeating schedule ${t[ll].template.name} was due on ${t[ll].next_date_string}, which is in the past.`,
-            );
-            break;
-          }
-          if (t[ll].template.full && t[ll].num_months > 0) {
-            remainder = 0;
-          } else if (ll === 0 && !t[ll].template.full) {
-            remainder = t[ll].target - last_month_balance;
-          } else {
-            remainder = t[ll].target - remainder;
-          }
-          let tg = 0;
-          if (remainder >= 0) {
-            tg = remainder;
-            remainder = 0;
-          } else {
-            tg = 0;
-            remainder = Math.abs(remainder);
-          }
-          if (
-            t[ll].template.full ||
-            t[ll].num_months === 0 ||
-            t[ll].target_frequency === 'weekly' ||
-            t[ll].target_frequency === 'daily'
-          ) {
-            increment += tg;
-          } else if (t[ll].template.full && t[ll].num_months > 0) {
-            increment += 0;
-          } else {
-            increment += tg / (t[ll].num_months + 1);
-          }
-        }
-      }
-    }
-    increment = Math.round(increment);
-    to_budget += increment;
   }
-  return { to_budget, errors, remainder };
+  return { to_budget, errors, remainder, scheduleFlag };
 }

@@ -1,29 +1,29 @@
-import React, { type ReactNode } from 'react';
+// @ts-strict-ignore
+import React, { type ComponentProps, type ReactNode } from 'react';
 
 import { type CSSProperties, styles } from '../../style';
-import Text from '../common/Text';
-import {
-  ConditionalPrivacyFilter,
-  type ConditionalPrivacyFilterProps,
-} from '../PrivacyFilter';
+import { Text } from '../common/Text';
+import { ConditionalPrivacyFilter } from '../PrivacyFilter';
 
-import useFormat from './useFormat';
-import useSheetName from './useSheetName';
-import useSheetValue from './useSheetValue';
+import { type FormatType, useFormat } from './useFormat';
+import { useSheetName } from './useSheetName';
+import { useSheetValue } from './useSheetValue';
 
 import { type Binding } from '.';
 
 type CellValueProps = {
   binding: string | Binding;
-  type?: string;
+  type?: FormatType;
   formatter?: (value) => ReactNode;
   style?: CSSProperties;
   getStyle?: (value) => CSSProperties;
-  privacyFilter?: ConditionalPrivacyFilterProps['privacyFilter'];
+  privacyFilter?: ComponentProps<
+    typeof ConditionalPrivacyFilter
+  >['privacyFilter'];
   ['data-testid']?: string;
 };
 
-function CellValue({
+export function CellValue({
   binding,
   type,
   formatter,
@@ -33,9 +33,9 @@ function CellValue({
   'data-testid': testId,
   ...props
 }: CellValueProps) {
-  let { fullSheetName } = useSheetName(binding);
-  let sheetValue = useSheetValue(binding);
-  let format = useFormat();
+  const { fullSheetName } = useSheetName(binding);
+  const sheetValue = useSheetValue(binding);
+  const format = useFormat();
 
   return (
     <ConditionalPrivacyFilter
@@ -43,8 +43,8 @@ function CellValue({
         privacyFilter != null
           ? privacyFilter
           : type === 'financial'
-          ? true
-          : undefined
+            ? true
+            : undefined
       }
     >
       <Text
@@ -62,5 +62,3 @@ function CellValue({
     </ConditionalPrivacyFilter>
   );
 }
-
-export default CellValue;

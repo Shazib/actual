@@ -1,9 +1,9 @@
 import { theme } from '../style';
 
-import ExternalLink from './common/ExternalLink';
-import View from './common/View';
+import { Link } from './common/Link';
+import { View } from './common/View';
 
-export default function DevelopmentTopBar() {
+export function DevelopmentTopBar() {
   return (
     <View
       style={{
@@ -20,12 +20,13 @@ export default function DevelopmentTopBar() {
     >
       <View>This is a demo build of Actual.</View>
       <View>
-        <ExternalLink
+        <Link
+          variant="external"
           linkColor="purple"
           to={`https://github.com/actualbudget/actual/pull/${process.env.REACT_APP_REVIEW_ID}`}
         >
           Open the PR: #{process.env.REACT_APP_REVIEW_ID}
-        </ExternalLink>
+        </Link>
       </View>
     </View>
   );

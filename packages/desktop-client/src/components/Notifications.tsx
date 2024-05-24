@@ -1,3 +1,4 @@
+// @ts-strict-ignore
 import React, {
   useState,
   useEffect,
@@ -6,19 +7,19 @@ import React, {
 } from 'react';
 import { useSelector } from 'react-redux';
 
+import { type State } from 'loot-core/src/client/state-types';
 import type { NotificationWithId } from 'loot-core/src/client/state-types/notifications';
 
 import { useActions } from '../hooks/useActions';
-import AnimatedLoading from '../icons/AnimatedLoading';
-import Delete from '../icons/v0/Delete';
+import { AnimatedLoading } from '../icons/AnimatedLoading';
+import { SvgDelete } from '../icons/v0';
 import { styles, theme, type CSSProperties } from '../style';
 
-import Button, { ButtonWithLoading } from './common/Button';
-import ExternalLink from './common/ExternalLink';
-import LinkButton from './common/LinkButton';
-import Stack from './common/Stack';
-import Text from './common/Text';
-import View from './common/View';
+import { Button, ButtonWithLoading } from './common/Button';
+import { Link } from './common/Link';
+import { Stack } from './common/Stack';
+import { Text } from './common/Text';
+import { View } from './common/View';
 
 function compileMessage(
   message: string,
@@ -29,19 +30,20 @@ function compileMessage(
   return (
     <Stack spacing={2}>
       {message.split(/\n\n/).map((paragraph, idx) => {
-        let parts = paragraph.split(/(\[[^\]]*\]\([^)]*\))/g);
+        const parts = paragraph.split(/(\[[^\]]*\]\([^)]*\))/g);
 
         return (
           <Text key={idx} style={{ lineHeight: '1.4em' }}>
             {parts.map((part, idx) => {
-              let match = part.match(/\[([^\]]*)\]\(([^)]*)\)/);
+              const match = part.match(/\[([^\]]*)\]\(([^)]*)\)/);
               if (match) {
-                let [_, text, href] = match;
+                const [_, text, href] = match;
 
                 if (href[0] === '#') {
-                  let actionName = href.slice(1);
+                  const actionName = href.slice(1);
                   return (
-                    <LinkButton
+                    <Link
+                      variant="text"
                       key={idx}
                       onClick={async e => {
                         e.preventDefault();
@@ -53,14 +55,19 @@ function compileMessage(
                       }}
                     >
                       {text}
-                    </LinkButton>
+                    </Link>
                   );
                 }
 
                 return (
-                  <ExternalLink linkColor="purple" key={idx} to={match[2]}>
+                  <Link
+                    variant="external"
+                    linkColor="purple"
+                    key={idx}
+                    to={match[2]}
+                  >
                     {match[1]}
-                  </ExternalLink>
+                  </Link>
                 );
               }
               return <Text key={idx}>{part}</Text>;
@@ -79,11 +86,20 @@ function Notification({
   notification: NotificationWithId;
   onRemove: () => void;
 }) {
-  let { type, title, message, pre, messageActions, sticky, internal, button } =
-    notification;
+  const {
+    type,
+    title,
+    message,
+    pre,
+    messageActions,
+    sticky,
+    internal,
+    button,
+    timeout,
+  } = notification;
 
-  let [loading, setLoading] = useState(false);
-  let [overlayLoading, setOverlayLoading] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [overlayLoading, setOverlayLoading] = useState(false);
 
   useEffect(() => {
     if (type === 'error' && internal) {
@@ -91,14 +107,14 @@ function Notification({
     }
 
     if (!sticky) {
-      setTimeout(onRemove, 6500);
+      setTimeout(onRemove, timeout || 6500);
     }
   }, []);
 
-  let positive = type === 'message';
-  let error = type === 'error';
+  const positive = type === 'message';
+  const error = type === 'error';
 
-  let processedMessage = useMemo(
+  const processedMessage = useMemo(
     () => compileMessage(message, messageActions, setOverlayLoading, onRemove),
     [message, messageActions],
   );
@@ -110,8 +126,8 @@ function Notification({
         color: positive
           ? theme.noticeText
           : error
-          ? theme.errorTextDark
-          : theme.warningTextDark,
+            ? theme.errorTextDark
+            : theme.warningTextDark,
       }}
     >
       <Stack
@@ -123,14 +139,14 @@ function Notification({
           backgroundColor: positive
             ? theme.noticeBackgroundLight
             : error
-            ? theme.errorBackground
-            : theme.warningBackground,
+              ? theme.errorBackground
+              : theme.warningBackground,
           borderTop: `3px solid ${
             positive
               ? theme.noticeBorder
               : error
-              ? theme.errorBorder
-              : theme.warningBorder
+                ? theme.errorBorder
+                : theme.warningBorder
           }`,
           ...styles.shadowLarge,
           maxWidth: 550,
@@ -175,8 +191,8 @@ function Notification({
                   positive
                     ? theme.noticeBorder
                     : error
-                    ? theme.errorBorder
-                    : theme.warningBorder
+                      ? theme.errorBorder
+                      : theme.warningBorder
                 }`,
                 color: 'currentColor',
                 fontSize: 14,
@@ -185,8 +201,8 @@ function Notification({
                   backgroundColor: positive
                     ? theme.noticeBackground
                     : error
-                    ? theme.errorBackground
-                    : theme.warningBackground,
+                      ? theme.errorBackground
+                      : theme.warningBackground,
                 },
               }}
             >
@@ -197,10 +213,11 @@ function Notification({
         {sticky && (
           <Button
             type="bare"
+            aria-label="Close"
             style={{ flexShrink: 0, color: 'currentColor' }}
             onClick={onRemove}
           >
-            <Delete style={{ width: 9, height: 9, color: 'currentColor' }} />
+            <SvgDelete style={{ width: 9, height: 9, color: 'currentColor' }} />
           </Button>
         )}
       </Stack>
@@ -226,9 +243,11 @@ function Notification({
   );
 }
 
-export default function Notifications({ style }: { style?: CSSProperties }) {
-  let { removeNotification } = useActions();
-  let notifications = useSelector(state => state.notifications.notifications);
+export function Notifications({ style }: { style?: CSSProperties }) {
+  const { removeNotification } = useActions();
+  const notifications = useSelector(
+    (state: State) => state.notifications.notifications,
+  );
   return (
     <View
       style={{

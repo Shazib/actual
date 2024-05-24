@@ -1,28 +1,41 @@
-import React from 'react';
+// @ts-strict-ignore
+import React, { useState } from 'react';
 
 import { css } from 'glamor';
 import {
   BarChart,
   Bar,
   CartesianGrid,
-  //Legend,
   Cell,
   ReferenceLine,
   XAxis,
   YAxis,
   Tooltip,
+  LabelList,
   ResponsiveContainer,
 } from 'recharts';
 
-import { amountToCurrency } from 'loot-core/src/shared/util';
+import {
+  amountToCurrency,
+  amountToCurrencyNoDecimal,
+} from 'loot-core/src/shared/util';
+import { type DataEntity } from 'loot-core/src/types/models/reports';
+import { type RuleConditionEntity } from 'loot-core/types/models/rule';
 
-import { theme } from '../../../style';
+import { useAccounts } from '../../../hooks/useAccounts';
+import { useCategories } from '../../../hooks/useCategories';
+import { useNavigate } from '../../../hooks/useNavigate';
+import { usePrivacyMode } from '../../../hooks/usePrivacyMode';
+import { useResponsive } from '../../../ResponsiveProvider';
 import { type CSSProperties } from '../../../style';
-import AlignedText from '../../common/AlignedText';
-import PrivacyFilter from '../../PrivacyFilter';
-import { getColorScale } from '../chart-theme';
-import Container from '../Container';
-import numberFormatterTooltip from '../numberFormatter';
+import { theme } from '../../../style/index';
+import { AlignedText } from '../../common/AlignedText';
+import { Container } from '../Container';
+import { getCustomTick } from '../getCustomTick';
+import { numberFormatterTooltip } from '../numberFormatter';
+
+import { adjustTextSize } from './adjustTextSize';
+import { renderCustomLabel } from './renderCustomLabel';
 
 type PayloadChild = {
   props: {
@@ -32,7 +45,6 @@ type PayloadChild = {
 };
 
 type PayloadItem = {
-  value: string;
   payload: {
     name: string;
     totalAssets: number | string;
@@ -47,7 +59,7 @@ type PayloadItem = {
 type CustomTooltipProps = {
   active?: boolean;
   payload?: PayloadItem[];
-  balanceTypeOp?: string;
+  balanceTypeOp?: 'totalAssets' | 'totalDebts' | 'totalTotals';
   yAxis?: string;
 };
 
@@ -65,8 +77,8 @@ const CustomTooltip = ({
           pointerEvents: 'none',
           borderRadius: 2,
           boxShadow: '0 1px 6px rgba(0, 0, 0, .20)',
-          backgroundColor: theme.menuAutoCompleteBackground,
-          color: theme.menuAutoCompleteText,
+          backgroundColor: theme.menuBackground,
+          color: theme.menuItemText,
           padding: 10,
         })}`}
       >
@@ -75,30 +87,28 @@ const CustomTooltip = ({
             <strong>{payload[0].payload[yAxis]}</strong>
           </div>
           <div style={{ lineHeight: 1.5 }}>
-            <PrivacyFilter>
-              {['totalAssets', 'totalTotals'].includes(balanceTypeOp) && (
-                <AlignedText
-                  left="Assets:"
-                  right={amountToCurrency(payload[0].payload.totalAssets)}
-                />
-              )}
-              {['totalDebts', 'totalTotals'].includes(balanceTypeOp) && (
-                <AlignedText
-                  left="Debt:"
-                  right={amountToCurrency(payload[0].payload.totalDebts)}
-                />
-              )}
-              {['totalTotals'].includes(balanceTypeOp) && (
-                <AlignedText
-                  left="Net:"
-                  right={
-                    <strong>
-                      {amountToCurrency(payload[0].payload.totalTotals)}
-                    </strong>
-                  }
-                />
-              )}
-            </PrivacyFilter>
+            {['totalAssets', 'totalTotals'].includes(balanceTypeOp) && (
+              <AlignedText
+                left="Assets:"
+                right={amountToCurrency(payload[0].payload.totalAssets)}
+              />
+            )}
+            {['totalDebts', 'totalTotals'].includes(balanceTypeOp) && (
+              <AlignedText
+                left="Debt:"
+                right={amountToCurrency(payload[0].payload.totalDebts)}
+              />
+            )}
+            {['totalTotals'].includes(balanceTypeOp) && (
+              <AlignedText
+                left="Net:"
+                right={
+                  <strong>
+                    {amountToCurrency(payload[0].payload.totalTotals)}
+                  </strong>
+                }
+              />
+            )}
           </div>
         </div>
       </div>
@@ -106,51 +116,54 @@ const CustomTooltip = ({
   }
 };
 
-/* Descoped for future PR
-type CustomLegendProps = {
-  active?: boolean;
-  payload?: PayloadItem[];
-  label?: string;
-};
-
-const CustomLegend = ({ active, payload, label }: CustomLegendProps) => {
-  const agg = payload[0].payload.children.map(leg => {
-    return {
-      name: leg.props.name,
-      color: leg.props.fill,
-    };
+const customLabel = (props, typeOp) => {
+  const calcX = props.x + props.width / 2;
+  const calcY = props.y - (props.value > 0 ? 15 : -15);
+  const textAnchor = 'middle';
+  const display =
+    props.value !== 0 && `${amountToCurrencyNoDecimal(props.value)}`;
+  const textSize = adjustTextSize({
+    sized: props.width,
+    type: typeOp === 'totalTotals' ? 'default' : 'variable',
+    values: props.value,
   });
 
-  OnChangeLegend(agg);
-
-  return <div />;
+  return renderCustomLabel(calcX, calcY, textAnchor, display, textSize);
 };
-*/
 
 type BarGraphProps = {
   style?: CSSProperties;
-  data;
-  groupBy;
-  balanceTypeOp;
-  empty;
-  compact: boolean;
-  domain?: {
-    y?: [number, number];
-  };
+  data: DataEntity;
+  filters: RuleConditionEntity[];
+  groupBy: string;
+  balanceTypeOp: 'totalAssets' | 'totalDebts' | 'totalTotals';
+  compact?: boolean;
+  viewLabels: boolean;
+  showHiddenCategories?: boolean;
+  showOffBudget?: boolean;
 };
 
-function BarGraph({
+export function BarGraph({
   style,
   data,
+  filters,
   groupBy,
-  empty,
   balanceTypeOp,
   compact,
-  domain,
+  viewLabels,
+  showHiddenCategories,
+  showOffBudget,
 }: BarGraphProps) {
-  const colorScale = getColorScale('qualitative');
-  const yAxis = ['Month', 'Year'].includes(groupBy) ? 'date' : 'name';
-  const splitData = ['Month', 'Year'].includes(groupBy) ? 'monthData' : 'data';
+  const navigate = useNavigate();
+  const categories = useCategories();
+  const accounts = useAccounts();
+  const privacyMode = usePrivacyMode();
+  const { isNarrowWidth } = useResponsive();
+  const [pointer, setPointer] = useState('');
+
+  const yAxis = groupBy === 'Interval' ? 'date' : 'name';
+  const splitData = groupBy === 'Interval' ? 'intervalData' : 'data';
+  const labelsMargin = viewLabels ? 30 : 0;
 
   const getVal = obj => {
     if (balanceTypeOp === 'totalDebts') {
@@ -164,6 +177,67 @@ function BarGraph({
     .map(c => c[yAxis])
     .reduce((acc, cur) => (cur.length > acc ? cur.length : acc), 0);
 
+  const largestValue = data[splitData]
+    .map(c => c[balanceTypeOp])
+    .reduce((acc, cur) => (Math.abs(cur) > Math.abs(acc) ? cur : acc), 0);
+
+  const leftMargin = Math.abs(largestValue) > 1000000 ? 20 : 0;
+
+  const onShowActivity = item => {
+    const amount = balanceTypeOp === 'totalDebts' ? 'lte' : 'gte';
+    const field = groupBy === 'Interval' ? null : groupBy.toLowerCase();
+    const hiddenCategories = categories.list
+      .filter(f => f.hidden)
+      .map(e => e.id);
+    const offBudgetAccounts = accounts.filter(f => f.offbudget).map(e => e.id);
+
+    const conditions = [
+      ...filters,
+      { field, op: 'is', value: item.id, type: 'id' },
+      {
+        field: 'date',
+        op: 'gte',
+        value: data.startDate,
+        options: { date: true },
+        type: 'date',
+      },
+      {
+        field: 'date',
+        op: 'lte',
+        value: data.endDate,
+        options: { date: true },
+        type: 'date',
+      },
+      balanceTypeOp !== 'totalTotals' && {
+        field: 'amount',
+        op: amount,
+        value: 0,
+        type: 'number',
+      },
+      hiddenCategories.length > 0 &&
+        !showHiddenCategories && {
+          field: 'category',
+          op: 'notOneOf',
+          value: hiddenCategories,
+          type: 'id',
+        },
+      offBudgetAccounts.length > 0 &&
+        !showOffBudget && {
+          field: 'account',
+          op: 'notOneOf',
+          value: offBudgetAccounts,
+          type: 'id',
+        },
+    ].filter(f => f);
+    navigate('/accounts', {
+      state: {
+        goBack: true,
+        conditions,
+        categoryId: item.id,
+      },
+    });
+  };
+
   return (
     <Container
       style={{
@@ -171,7 +245,7 @@ function BarGraph({
         ...(compact && { height: 'auto' }),
       }}
     >
-      {(width, height, portalHost) =>
+      {(width, height) =>
         data[splitData] && (
           <ResponsiveContainer>
             <div>
@@ -180,63 +254,96 @@ function BarGraph({
                 width={width}
                 height={height}
                 stackOffset="sign"
-                data={data[splitData].filter(i =>
-                  !empty ? i[balanceTypeOp] !== 0 : true,
-                )}
-                margin={{ top: 0, right: 0, left: 0, bottom: 0 }}
+                data={data[splitData]}
+                style={{ cursor: pointer }}
+                margin={{
+                  top: labelsMargin,
+                  right: 0,
+                  left: leftMargin,
+                  bottom: 0,
+                }}
               >
-                {
-                  //!compact && <Legend content={<CustomLegend />} />
-                }
-                <Tooltip
-                  content={
-                    <CustomTooltip
-                      balanceTypeOp={balanceTypeOp}
-                      yAxis={yAxis}
-                    />
-                  }
-                  formatter={numberFormatterTooltip}
-                  isAnimationActive={false}
-                />
-                {!compact && <CartesianGrid strokeDasharray="3 3" />}
-                {!compact && (
-                  <XAxis
-                    dataKey={yAxis}
-                    angle={-35}
-                    textAnchor="end"
-                    height={Math.sqrt(longestLabelLength) * 25}
+                {(!isNarrowWidth || !compact) && (
+                  <Tooltip
+                    cursor={{ fill: 'transparent' }}
+                    content={
+                      <CustomTooltip
+                        balanceTypeOp={balanceTypeOp}
+                        yAxis={yAxis}
+                      />
+                    }
+                    formatter={numberFormatterTooltip}
+                    isAnimationActive={false}
                   />
                 )}
-                {!compact && <YAxis />}
-                {!compact && <ReferenceLine y={0} stroke="#000" />}
-                <Bar dataKey={val => getVal(val)} stackId="a">
-                  {data[splitData]
-                    .filter(i => (!empty ? i[balanceTypeOp] !== 0 : true))
-                    .map((entry, index) => (
-                      <Cell
-                        key={`cell-${index}`}
-                        fill={
-                          yAxis === 'date'
-                            ? balanceTypeOp === 'totalDebts'
-                              ? theme.reportsRed
-                              : theme.reportsBlue
-                            : colorScale[index % colorScale.length]
-                        }
-                        name={entry[yAxis]}
-                      />
-                    ))}
+                {!compact && (
+                  <>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis
+                      dataKey={yAxis}
+                      angle={-35}
+                      textAnchor="end"
+                      height={Math.sqrt(longestLabelLength) * 25}
+                      tick={{ fill: theme.pageText }}
+                      tickLine={{ stroke: theme.pageText }}
+                    />
+                    <YAxis
+                      tickFormatter={value =>
+                        getCustomTick(
+                          amountToCurrencyNoDecimal(value),
+                          privacyMode,
+                        )
+                      }
+                      tick={{ fill: theme.pageText }}
+                      tickLine={{ stroke: theme.pageText }}
+                      tickSize={0}
+                    />
+                    <ReferenceLine y={0} stroke={theme.pageTextLight} />
+                  </>
+                )}
+                <Bar
+                  dataKey={val => getVal(val)}
+                  stackId="a"
+                  onMouseLeave={() => setPointer('')}
+                  onMouseEnter={() =>
+                    !['Group', 'Interval'].includes(groupBy) &&
+                    setPointer('pointer')
+                  }
+                  onClick={
+                    !isNarrowWidth &&
+                    !['Group', 'Interval'].includes(groupBy) &&
+                    onShowActivity
+                  }
+                >
+                  {viewLabels && !compact && (
+                    <LabelList
+                      dataKey={val => getVal(val)}
+                      content={e => customLabel(e, balanceTypeOp)}
+                    />
+                  )}
+                  {data.legend.map((entry, index) => (
+                    <Cell
+                      key={`cell-${index}`}
+                      fill={entry.color}
+                      name={entry.name}
+                    />
+                  ))}
                 </Bar>
                 {yAxis === 'date' && balanceTypeOp === 'totalTotals' && (
-                  <Bar dataKey={'totalDebts'} stackId="a">
-                    {data[splitData]
-                      .filter(i => (!empty ? i[balanceTypeOp] !== 0 : true))
-                      .map((entry, index) => (
-                        <Cell
-                          key={`cell-${index}`}
-                          fill={theme.reportsRed}
-                          name={entry.name}
-                        />
-                      ))}
+                  <Bar dataKey="totalDebts" stackId="a">
+                    {viewLabels && !compact && (
+                      <LabelList
+                        dataKey="totalDebts"
+                        content={e => customLabel(e, balanceTypeOp)}
+                      />
+                    )}
+                    {data[splitData].map((entry, index) => (
+                      <Cell
+                        key={`cell-${index}`}
+                        fill={theme.reportsRed}
+                        name={entry.name}
+                      />
+                    ))}
                   </Bar>
                 )}
               </BarChart>
@@ -247,5 +354,3 @@ function BarGraph({
     </Container>
   );
 }
-
-export default BarGraph;

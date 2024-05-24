@@ -49,7 +49,7 @@ test.describe('Mobile', () => {
   test('opens the accounts page and asserts on balances', async () => {
     const accountsPage = await navigation.goToAccountsPage();
 
-    const account = await accountsPage.getNthAccount(0);
+    const account = await accountsPage.getNthAccount(1);
 
     await expect(account.name).toHaveText('Ally Savings');
     await expect(account.balance).toHaveText('7,653.00');
@@ -58,7 +58,7 @@ test.describe('Mobile', () => {
 
   test('opens individual account page and checks that filtering is working', async () => {
     const accountsPage = await navigation.goToAccountsPage();
-    const accountPage = await accountsPage.openNthAccount(1);
+    const accountPage = await accountsPage.openNthAccount(0);
 
     await expect(accountPage.heading).toHaveText('Bank of America');
     expect(await accountPage.getBalance()).toBeGreaterThan(0);
@@ -83,6 +83,8 @@ test.describe('Mobile', () => {
     await expect(transactionEntryPage.header).toHaveText('New Transaction');
 
     await transactionEntryPage.amountField.fill('12.34');
+    // Click anywhere to cancel active edit.
+    await transactionEntryPage.header.click();
     await transactionEntryPage.fillField(
       page.getByTestId('payee-field'),
       'Kroger',
@@ -114,6 +116,8 @@ test.describe('Mobile', () => {
     await expect(page).toMatchThemeScreenshots();
 
     await transactionEntryPage.amountField.fill('12.34');
+    // Click anywhere to cancel active edit.
+    await transactionEntryPage.header.click();
     await transactionEntryPage.fillField(
       page.getByTestId('payee-field'),
       'Kroger',

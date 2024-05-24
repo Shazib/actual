@@ -1,8 +1,9 @@
+// @ts-strict-ignore
 import React, { type ComponentProps, memo } from 'react';
 
 import * as monthUtils from 'loot-core/src/shared/months';
 
-import View from '../common/View';
+import { View } from '../common/View';
 
 import { MonthPicker } from './MonthPicker';
 import { getScrollbarWidth } from './util';
@@ -14,11 +15,11 @@ type BudgetPageHeaderProps = {
   monthBounds: ComponentProps<typeof MonthPicker>['monthBounds'];
 };
 
-const BudgetPageHeader = memo<BudgetPageHeaderProps>(
+export const BudgetPageHeader = memo<BudgetPageHeaderProps>(
   ({ startMonth, onMonthSelect, numMonths, monthBounds }) => {
     function getValidMonth(month) {
-      let start = monthBounds.start;
-      let end = monthUtils.subMonths(monthBounds.end, numMonths - 1);
+      const start = monthBounds.start;
+      const end = monthUtils.subMonths(monthBounds.end, numMonths - 1);
 
       if (month < start) {
         return start;
@@ -44,4 +45,4 @@ const BudgetPageHeader = memo<BudgetPageHeaderProps>(
   },
 );
 
-export default BudgetPageHeader;
+BudgetPageHeader.displayName = 'BudgetPageHeader';

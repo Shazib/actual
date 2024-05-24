@@ -1,3 +1,4 @@
+// @ts-strict-ignore
 import { amountToInteger } from '../../../shared/util';
 
 export async function goalsSimple(
@@ -7,6 +8,7 @@ export async function goalsSimple(
   limit,
   hold,
   to_budget,
+  last_month_balance,
 ) {
   // simple has 'monthly' and/or 'limit' params
   if (template.limit != null) {
@@ -21,10 +23,10 @@ export async function goalsSimple(
   }
   let increment = 0;
   if (template.monthly != null) {
-    let monthly = amountToInteger(template.monthly);
+    const monthly = amountToInteger(template.monthly);
     increment = monthly;
   } else {
-    increment = limit;
+    increment = limit - last_month_balance;
   }
   to_budget += increment;
   return { to_budget, errors, limit, limitCheck, hold };

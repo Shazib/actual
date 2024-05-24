@@ -46,7 +46,7 @@ test.describe('Transactions', () => {
       await expect(datepicker).toMatchThemeScreenshots();
 
       // Select "is xxxxx"
-      await datepicker.getByRole('button', { name: '20' }).click();
+      await datepicker.getByText('20', { exact: true }).click();
       await filterTooltip.applyButton.click();
 
       // Assert that there are no transactions
@@ -63,7 +63,7 @@ test.describe('Transactions', () => {
       await expect(autocomplete).toMatchThemeScreenshots();
 
       // Select the active item
-      await page.getByRole('button', { name: 'Clothing' }).click();
+      await page.getByTestId('Clothing-category-item').click();
       await filterTooltip.applyButton.click();
 
       // Assert that there are only clothing transactions

@@ -1,12 +1,23 @@
-import { GlobalPrefs, LocalPrefs } from '../client/state-types/prefs';
 import { ParseFileResult } from '../server/accounts/parse-file';
 import { batchUpdateTransactions } from '../server/accounts/transactions';
 import { Backup } from '../server/backups';
 import { RemoteFile } from '../server/cloud-storage';
 import { Node as SpreadsheetNode } from '../server/spreadsheet/spreadsheet';
 import { Message } from '../server/sync';
+import { QueryState } from '../shared/query';
 
-import { AccountEntity, CategoryEntity, CategoryGroupEntity } from './models';
+import { Budget } from './budget';
+import {
+  AccountEntity,
+  CategoryEntity,
+  CategoryGroupEntity,
+  GoCardlessToken,
+  GoCardlessInstitution,
+  SimpleFinAccount,
+  RuleEntity,
+  PayeeEntity,
+} from './models';
+import { GlobalPrefs, LocalPrefs } from './prefs';
 import { EmptyObject } from './util';
 
 export interface ServerHandlers {
@@ -25,8 +36,6 @@ export interface ServerHandlers {
 
   'transaction-add': (transaction) => Promise<EmptyObject>;
 
-  'transaction-add': (transaction) => Promise<EmptyObject>;
-
   'transaction-delete': (transaction) => Promise<EmptyObject>;
 
   'transactions-parse-file': (arg: {
@@ -41,14 +50,14 @@ export interface ServerHandlers {
     payees;
   }) => Promise<unknown>;
 
-  'transactions-export-query': (arg: { query: queryState }) => Promise<unknown>;
+  'transactions-export-query': (arg: { query: QueryState }) => Promise<unknown>;
 
   'get-categories': () => Promise<{
     grouped: Array<CategoryGroupEntity>;
     list: Array<CategoryEntity>;
   }>;
 
-  'get-earliest-transaction': () => Promise<unknown>;
+  'get-earliest-transaction': () => Promise<{ date: string }>;
 
   'get-budget-bounds': () => Promise<{ start: string; end: string }>;
 
@@ -68,18 +77,23 @@ export interface ServerHandlers {
 
   'budget-set-type': (arg: { type }) => Promise<unknown>;
 
-  'category-create': (arg: { name; groupId; isIncome }) => Promise<unknown>;
+  'category-create': (arg: {
+    name;
+    groupId;
+    isIncome?;
+    hidden?: boolean;
+  }) => Promise<string>;
 
   'category-update': (category) => Promise<unknown>;
 
   'category-move': (arg: { id; groupId; targetId }) => Promise<unknown>;
 
-  'category-delete': (arg: { id; transferId }) => Promise<{ error?: string }>;
+  'category-delete': (arg: { id; transferId? }) => Promise<{ error?: string }>;
 
   'category-group-create': (arg: {
     name;
     isIncome?: boolean;
-  }) => Promise<unknown>;
+  }) => Promise<string>;
 
   'category-group-update': (group) => Promise<unknown>;
 
@@ -89,7 +103,7 @@ export interface ServerHandlers {
 
   'must-category-transfer': (arg: { id }) => Promise<unknown>;
 
-  'payee-create': (arg: { name }) => Promise<unknown>;
+  'payee-create': (arg: { name }) => Promise<string>;
 
   'payees-get': () => Promise<PayeeEntity[]>;
 
@@ -105,7 +119,7 @@ export interface ServerHandlers {
 
   'payees-check-orphaned': (arg: { ids }) => Promise<unknown>;
 
-  'payees-get-rules': (arg: { id }) => Promise<unknown>;
+  'payees-get-rules': (arg: { id: string }) => Promise<RuleEntity[]>;
 
   'make-filters-from-conditions': (arg: {
     conditions;
@@ -126,8 +140,6 @@ export interface ServerHandlers {
 
   query: (query) => Promise<{ data; dependencies }>;
 
-  'bank-delete': (arg: { id }) => Promise<unknown>;
-
   'account-update': (arg: { id; name }) => Promise<unknown>;
 
   'accounts-get': () => Promise<AccountEntity[]>;
@@ -136,36 +148,20 @@ export interface ServerHandlers {
     id;
   }) => Promise<{ balance: number; numTransactions: number }>;
 
-  'accounts-link': (arg: {
-    institution;
-    publicToken;
-    accountId;
-    upgradingId;
-  }) => Promise<'ok'>;
-
   'gocardless-accounts-link': (arg: {
     requisitionId;
     account;
     upgradingId;
   }) => Promise<'ok'>;
 
-  'accounts-connect': (arg: {
-    institution;
-    publicToken;
-    accountIds;
-    offbudgetIds;
-  }) => Promise<unknown>;
-
-  'gocardless-accounts-connect': (arg: {
-    institution;
-    publicToken;
-    accountIds;
-    offbudgetIds;
-  }) => Promise<unknown>;
+  'simplefin-accounts-link': (arg: {
+    externalAccount;
+    upgradingId;
+  }) => Promise<'ok'>;
 
   'account-create': (arg: {
     name: string;
-    balance: number;
+    balance?: number;
     offBudget?: boolean;
     closed?: 0 | 1;
   }) => Promise<string>;
@@ -181,38 +177,43 @@ export interface ServerHandlers {
 
   'account-move': (arg: { id; targetId }) => Promise<unknown>;
 
-  'poll-web-token': (arg: { token }) => Promise<unknown>;
-
-  'poll-web-token-stop': () => Promise<'ok'>;
-
-  'accounts-sync': (arg: { id }) => Promise<{
-    errors: unknown;
-    newTransactions: unknown;
-    matchedTransactions: unknown;
-    updatedAccounts: unknown;
-  }>;
-
   'secret-set': (arg: { name: string; value: string }) => Promise<null>;
   'secret-check': (arg: string) => Promise<string | { error?: string }>;
 
   'gocardless-poll-web-token': (arg: {
-    upgradingAccountId;
-    requisitionId;
-  }) => Promise<{ error } | { data }>;
+    upgradingAccountId?: string;
+    requisitionId: string;
+  }) => Promise<
+    { error: 'unknown' } | { error: 'timeout' } | { data: GoCardlessToken }
+  >;
 
   'gocardless-status': () => Promise<{ configured: boolean }>;
 
-  'gocardless-get-banks': (country) => Promise<unknown>;
+  'simplefin-status': () => Promise<{ configured: boolean }>;
+
+  'simplefin-accounts': () => Promise<{ accounts: SimpleFinAccount[] }>;
+
+  'gocardless-get-banks': (country: string) => Promise<{
+    data: GoCardlessInstitution[];
+    error?: { reason: string };
+  }>;
 
   'gocardless-poll-web-token-stop': () => Promise<'ok'>;
 
   'gocardless-create-web-token': (arg: {
-    upgradingAccountId;
-    institutionId;
-    accessValidForDays;
-  }) => Promise<unknown>;
+    upgradingAccountId?: string;
+    institutionId: string;
+    accessValidForDays: number;
+  }) => Promise<
+    | {
+        requisitionId: string;
+        link: string;
+      }
+    | { error: 'unauthorized' }
+    | { error: 'failed' }
+  >;
 
-  'gocardless-accounts-sync': (arg: { id }) => Promise<{
+  'accounts-bank-sync': (arg: { id?: string }) => Promise<{
     errors;
     newTransactions;
     matchedTransactions;
@@ -226,13 +227,6 @@ export interface ServerHandlers {
   }>;
 
   'account-unlink': (arg: { id }) => Promise<'ok'>;
-
-  'make-plaid-public-token': (arg: {
-    bankId;
-  }) => Promise<
-    | { error: ''; code: data.error_code; type: data.error_type }
-    | { linkToken: data.link_token }
-  >;
 
   'save-global-prefs': (prefs) => Promise<'ok'>;
 
@@ -257,9 +251,9 @@ export interface ServerHandlers {
 
   'get-did-bootstrap': () => Promise<boolean>;
 
-  'subscribe-needs-bootstrap': (
-    args: { url } = {},
-  ) => Promise<
+  'subscribe-needs-bootstrap': (args: {
+    url;
+  }) => Promise<
     { error: string } | { bootstrapped: unknown; hasServer: boolean }
   >;
 
@@ -271,7 +265,10 @@ export interface ServerHandlers {
     password;
   }) => Promise<{ error?: string }>;
 
-  'subscribe-sign-in': (arg: { password }) => Promise<{ error?: string }>;
+  'subscribe-sign-in': (arg: {
+    password;
+    loginMethod?: string;
+  }) => Promise<{ error?: string }>;
 
   'subscribe-sign-out': () => Promise<'ok'>;
 
@@ -295,7 +292,7 @@ export interface ServerHandlers {
 
   'reset-budget-cache': () => Promise<unknown>;
 
-  'upload-budget': (arg: { id } = {}) => Promise<{ error?: string }>;
+  'upload-budget': (arg: { id }) => Promise<{ error?: string }>;
 
   'download-budget': (arg: { fileId; replace? }) => Promise<{ error; id }>;
 
@@ -303,13 +300,16 @@ export interface ServerHandlers {
     error?: { message: string; reason: string; meta: unknown };
   }>;
 
-  'load-budget': (arg: { id }) => Promise<{ error }>;
+  'load-budget': (arg: { id: string }) => Promise<{ error }>;
 
   'create-demo-budget': () => Promise<unknown>;
 
   'close-budget': () => Promise<'ok'>;
 
-  'delete-budget': (arg: { id; cloudFileId? }) => Promise<'ok'>;
+  'delete-budget': (arg: {
+    id?: string;
+    cloudFileId?: string;
+  }) => Promise<'ok'>;
 
   'create-budget': (arg: {
     budgetName?;

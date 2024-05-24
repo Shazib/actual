@@ -1,16 +1,17 @@
-import React, { type CSSProperties, useState } from 'react';
+// @ts-strict-ignore
+import React, { type CSSProperties, useRef, useState } from 'react';
 import { type ConnectDragSource } from 'react-dnd';
 
-import ExpandArrow from '../../icons/v0/ExpandArrow';
-import CheveronDown from '../../icons/v1/CheveronDown';
+import { SvgExpandArrow } from '../../icons/v0';
+import { SvgCheveronDown } from '../../icons/v1';
 import { theme } from '../../style';
-import Button from '../common/Button';
-import Menu from '../common/Menu';
-import Text from '../common/Text';
-import View from '../common/View';
-import NotesButton from '../NotesButton';
+import { Button } from '../common/Button';
+import { Menu } from '../common/Menu';
+import { Popover } from '../common/Popover';
+import { Text } from '../common/Text';
+import { View } from '../common/View';
+import { NotesButton } from '../NotesButton';
 import { InputCell } from '../table';
-import { Tooltip } from '../tooltips';
 
 type SidebarGroupProps = {
   group: {
@@ -26,7 +27,6 @@ type SidebarGroupProps = {
   collapsed: boolean;
   dragPreview?: boolean;
   innerRef?: ConnectDragSource;
-  borderColor?: string;
   style?: CSSProperties;
   onEdit?: (id: string) => void;
   onSave?: (group: object) => Promise<void>;
@@ -36,14 +36,13 @@ type SidebarGroupProps = {
   onToggleCollapse?: (id: string) => void;
 };
 
-function SidebarGroup({
+export function SidebarGroup({
   group,
   editing,
   collapsed,
   dragPreview,
   innerRef,
   style,
-  borderColor = theme.tableBorder,
   onEdit,
   onSave,
   onDelete,
@@ -53,6 +52,7 @@ function SidebarGroup({
 }: SidebarGroupProps) {
   const temporary = group.id === 'new';
   const [menuOpen, setMenuOpen] = useState(false);
+  const triggerRef = useRef(null);
 
   const displayed = (
     <View
@@ -62,12 +62,12 @@ function SidebarGroup({
         userSelect: 'none',
         WebkitUserSelect: 'none',
       }}
-      onClick={e => {
+      onClick={() => {
         onToggleCollapse(group.id);
       }}
     >
       {!dragPreview && (
-        <ExpandArrow
+        <SvgExpandArrow
           width={8}
           height={8}
           style={{
@@ -92,52 +92,59 @@ function SidebarGroup({
       </div>
       {!dragPreview && (
         <>
-          <View style={{ marginLeft: 5, flexShrink: 0 }}>
+          <View style={{ marginLeft: 5, flexShrink: 0 }} ref={triggerRef}>
             <Button
               type="bare"
+              className="hover-visible"
               onClick={e => {
                 e.stopPropagation();
                 setMenuOpen(true);
               }}
               style={{ padding: 3 }}
             >
-              <CheveronDown width={14} height={14} />
+              <SvgCheveronDown width={14} height={14} />
             </Button>
-            {menuOpen && (
-              <Tooltip
-                position="bottom-left"
-                width={200}
-                style={{ padding: 0 }}
-                onClose={() => setMenuOpen(false)}
-              >
-                <Menu
-                  onMenuSelect={type => {
-                    if (type === 'rename') {
-                      onEdit(group.id);
-                    } else if (type === 'add-category') {
-                      onShowNewCategory(group.id);
-                    } else if (type === 'delete') {
-                      onDelete(group.id);
-                    } else if (type === 'toggle-visibility') {
-                      onSave({ ...group, hidden: !group.hidden });
-                    }
-                    setMenuOpen(false);
-                  }}
-                  items={[
-                    { name: 'add-category', text: 'Add category' },
-                    {
-                      name: 'toggle-visibility',
-                      text: group.hidden ? 'Show' : 'Hide',
-                    },
-                    { name: 'rename', text: 'Rename' },
-                    onDelete && { name: 'delete', text: 'Delete' },
-                  ]}
-                />
-              </Tooltip>
-            )}
+
+            <Popover
+              triggerRef={triggerRef}
+              placement="bottom start"
+              isOpen={menuOpen}
+              onOpenChange={() => setMenuOpen(false)}
+              style={{ width: 200 }}
+            >
+              <Menu
+                onMenuSelect={type => {
+                  if (type === 'rename') {
+                    onEdit(group.id);
+                  } else if (type === 'add-category') {
+                    onShowNewCategory(group.id);
+                  } else if (type === 'delete') {
+                    onDelete(group.id);
+                  } else if (type === 'toggle-visibility') {
+                    onSave({ ...group, hidden: !group.hidden });
+                  }
+                  setMenuOpen(false);
+                }}
+                items={[
+                  { name: 'add-category', text: 'Add category' },
+                  !group.is_income && {
+                    name: 'toggle-visibility',
+                    text: group.hidden ? 'Show' : 'Hide',
+                  },
+                  { name: 'rename', text: 'Rename' },
+                  onDelete && { name: 'delete', text: 'Delete' },
+                ]}
+              />
+            </Popover>
           </View>
           <View style={{ flex: 1 }} />
-          <NotesButton id={group.id} />
+          <View style={{ flexShrink: 0 }}>
+            <NotesButton
+              id={group.id}
+              style={dragPreview && { color: 'currentColor' }}
+              defaultColor={theme.pageTextLight}
+            />
+          </View>
         </>
       )}
     </View>
@@ -150,8 +157,15 @@ function SidebarGroup({
         ...style,
         width: 200,
         backgroundColor: theme.tableRowHeaderBackground,
-        '& button': { display: 'none' },
-        '&:hover button': { display: 'flex', color: theme.tableTextHover },
+        overflow: 'hidden',
+        '& .hover-visible': {
+          display: 'none',
+        },
+        ...(!dragPreview && {
+          '&:hover .hover-visible': {
+            display: 'flex',
+          },
+        }),
         ...(dragPreview && {
           paddingLeft: 10,
           zIndex: 10000,
@@ -168,7 +182,7 @@ function SidebarGroup({
     >
       <InputCell
         value={group.name}
-        formatter={value => displayed}
+        formatter={() => displayed}
         width="flex"
         exposed={editing}
         onUpdate={value => {
@@ -185,7 +199,6 @@ function SidebarGroup({
         onBlur={() => onEdit(null)}
         style={{ fontWeight: 600 }}
         inputProps={{
-          value: undefined,
           style: { marginLeft: 20 },
           placeholder: temporary ? 'New Group Name' : '',
         }}
@@ -193,5 +206,3 @@ function SidebarGroup({
     </View>
   );
 }
-
-export default SidebarGroup;

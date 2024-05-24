@@ -1,3 +1,4 @@
+// @ts-strict-ignore
 export async function goalsRemainder(
   template,
   budgetAvailable,
@@ -24,10 +25,10 @@ export function findRemainder(priority_list, categories, category_templates) {
   // find all remainder templates, place them at highest priority
   let remainder_found;
   let remainder_weight_total = 0;
-  let remainder_priority = priority_list[priority_list.length - 1] + 1;
+  const remainder_priority = priority_list[priority_list.length - 1] + 1;
   for (let c = 0; c < categories.length; c++) {
-    let category = categories[c];
-    let templates = category_templates[category.id];
+    const category = categories[c];
+    const templates = category_templates[category.id];
     if (templates) {
       for (let i = 0; i < templates.length; i++) {
         if (templates[i].type === 'remainder') {
@@ -39,8 +40,8 @@ export function findRemainder(priority_list, categories, category_templates) {
     }
   }
   return {
-    remainder_found: remainder_found,
-    remainder_priority: remainder_priority,
-    remainder_weight_total: remainder_weight_total,
+    remainder_found,
+    remainder_priority,
+    remainder_weight_total,
   };
 }

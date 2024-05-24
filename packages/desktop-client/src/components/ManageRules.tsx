@@ -1,3 +1,4 @@
+// @ts-strict-ignore
 import React, {
   useState,
   useEffect,
@@ -6,7 +7,7 @@ import React, {
   type SetStateAction,
   type Dispatch,
 } from 'react';
-import { useDispatch, useSelector } from 'react-redux';
+import { useDispatch } from 'react-redux';
 
 import { pushModal } from 'loot-core/src/client/actions/modals';
 import { initiallyLoadPayees } from 'loot-core/src/client/actions/queries';
@@ -14,22 +15,24 @@ import { send } from 'loot-core/src/platform/client/fetch';
 import * as undo from 'loot-core/src/platform/client/undo';
 import { mapField, friendlyOp } from 'loot-core/src/shared/rules';
 import { describeSchedule } from 'loot-core/src/shared/schedules';
-import { type RuleEntity } from 'loot-core/src/types/models';
+import { type NewRuleEntity } from 'loot-core/src/types/models';
 
-import useCategories from '../hooks/useCategories';
-import useSelected, { SelectedProvider } from '../hooks/useSelected';
+import { useAccounts } from '../hooks/useAccounts';
+import { useCategories } from '../hooks/useCategories';
+import { usePayees } from '../hooks/usePayees';
+import { useSelected, SelectedProvider } from '../hooks/useSelected';
 import { theme } from '../style';
 
-import Button from './common/Button';
-import ExternalLink from './common/ExternalLink';
-import Search from './common/Search';
-import Stack from './common/Stack';
-import Text from './common/Text';
-import View from './common/View';
-import RulesHeader from './rules/RulesHeader';
-import RulesList from './rules/RulesList';
+import { Button } from './common/Button';
+import { Link } from './common/Link';
+import { Search } from './common/Search';
+import { Stack } from './common/Stack';
+import { Text } from './common/Text';
+import { View } from './common/View';
+import { RulesHeader } from './rules/RulesHeader';
+import { RulesList } from './rules/RulesList';
 import { SchedulesQuery } from './rules/SchedulesQuery';
-import SimpleTable from './rules/SimpleTable';
+import { SimpleTable } from './rules/SimpleTable';
 
 function mapValue(field, value, { payees, categories, accounts }) {
   if (!value) return '';
@@ -51,14 +54,14 @@ function mapValue(field, value, { payees, categories, accounts }) {
 }
 
 function ruleToString(rule, data) {
-  let conditions = rule.conditions.flatMap(cond => [
+  const conditions = rule.conditions.flatMap(cond => [
     mapField(cond.field),
     friendlyOp(cond.op),
     cond.op === 'oneOf' || cond.op === 'notOneOf'
       ? cond.value.map(v => mapValue(cond.field, v, data)).join(', ')
       : mapValue(cond.field, cond.value, data),
   ]);
-  let actions = rule.actions.flatMap(action => {
+  const actions = rule.actions.flatMap(action => {
     if (action.op === 'set') {
       return [
         friendlyOp(action.op),
@@ -67,7 +70,7 @@ function ruleToString(rule, data) {
         mapValue(action.field, action.value, data),
       ];
     } else if (action.op === 'link-schedule') {
-      let schedule = data.schedules.find(s => s.id === action.value);
+      const schedule = data.schedules.find(s => s.id === action.value);
       return [
         friendlyOp(action.op),
         describeSchedule(
@@ -95,19 +98,21 @@ function ManageRulesContent({
   payeeId,
   setLoading,
 }: ManageRulesContentProps) {
-  let [allRules, setAllRules] = useState(null);
-  let [rules, setRules] = useState(null);
-  let [filter, setFilter] = useState('');
-  let dispatch = useDispatch();
+  const [allRules, setAllRules] = useState([]);
+  const [page, setPage] = useState(0);
+  const [filter, setFilter] = useState('');
+  const dispatch = useDispatch();
 
-  let { data: schedules } = SchedulesQuery.useQuery();
-  let { list: categories } = useCategories();
-  let state = useSelector(state => ({
-    payees: state.queries.payees,
-    accounts: state.queries.accounts,
+  const { data: schedules } = SchedulesQuery.useQuery();
+  const { list: categories } = useCategories();
+  const payees = usePayees();
+  const accounts = useAccounts();
+  const state = {
+    payees,
+    accounts,
     schedules,
-  }));
-  let filterData = useMemo(
+  };
+  const filterData = useMemo(
     () => ({
       ...state,
       categories,
@@ -115,19 +120,28 @@ function ManageRulesContent({
     [state, categories],
   );
 
-  let filteredRules = useMemo(
+  const filteredRules = useMemo(
     () =>
-      filter === '' || !rules
-        ? rules
-        : rules.filter(rule =>
+      (filter === ''
+        ? allRules
+        : allRules.filter(rule =>
             ruleToString(rule, filterData)
               .toLowerCase()
               .includes(filter.toLowerCase()),
-          ),
-    [rules, filter, filterData],
+          )
+      ).slice(0, 100 + page * 50),
+    [allRules, filter, filterData, page],
   );
-  let selectedInst = useSelected('manage-rules', allRules, []);
-  let [hoveredRule, setHoveredRule] = useState(null);
+  const selectedInst = useSelected('manage-rules', allRules, []);
+  const [hoveredRule, setHoveredRule] = useState(null);
+
+  const onSearchChange = useCallback(
+    (value: string) => {
+      setFilter(value);
+      setPage(0);
+    },
+    [setFilter],
+  );
 
   async function loadRules() {
     setLoading(true);
@@ -147,14 +161,15 @@ function ManageRulesContent({
 
   useEffect(() => {
     async function loadData() {
-      let loadedRules = await loadRules();
-      setRules(loadedRules.slice(0, 100));
+      await loadRules();
       setLoading(false);
 
       await dispatch(initiallyLoadPayees());
     }
 
-    undo.setUndoState('openModal', 'manage-rules');
+    if (payeeId) {
+      undo.setUndoState('openModal', 'manage-rules');
+    }
 
     loadData();
 
@@ -164,12 +179,12 @@ function ManageRulesContent({
   }, []);
 
   function loadMore() {
-    setRules(rules.concat(allRules.slice(rules.length, rules.length + 50)));
+    setPage(page => page + 1);
   }
 
   async function onDeleteSelected() {
     setLoading(true);
-    let { someDeletionsFailed } = await send('rule-delete-all', [
+    const { someDeletionsFailed } = await send('rule-delete-all', [
       ...selectedInst.items,
     ]);
 
@@ -177,31 +192,17 @@ function ManageRulesContent({
       alert('Some rules were not deleted because they are linked to schedules');
     }
 
-    let newRules = await loadRules();
-    setRules(rules => {
-      return newRules.slice(0, rules.length);
-    });
+    await loadRules();
     selectedInst.dispatch({ type: 'select-none' });
     setLoading(false);
   }
 
-  let onEditRule = useCallback(rule => {
+  const onEditRule = useCallback(rule => {
     dispatch(
       pushModal('edit-rule', {
         rule,
-        onSave: async newRule => {
-          let newRules = await loadRules();
-
-          setRules(rules => {
-            let newIdx = newRules.findIndex(rule => rule.id === newRule.id);
-
-            if (newIdx > rules.length) {
-              return newRules.slice(0, newIdx + 75);
-            } else {
-              return newRules.slice(0, rules.length);
-            }
-          });
-
+        onSave: async () => {
+          await loadRules();
           setLoading(false);
         },
       }),
@@ -209,7 +210,7 @@ function ManageRulesContent({
   }, []);
 
   function onCreateRule() {
-    let rule: RuleEntity = {
+    const rule: NewRuleEntity = {
       stage: null,
       conditionsOp: 'and',
       conditions: [
@@ -233,27 +234,17 @@ function ManageRulesContent({
     dispatch(
       pushModal('edit-rule', {
         rule,
-        onSave: async newRule => {
-          let newRules = await loadRules();
-
-          setRules(rules => {
-            let newIdx = newRules.findIndex(rule => rule.id === newRule.id);
-            return newRules.slice(0, newIdx + 75);
-          });
-
+        onSave: async () => {
+          await loadRules();
           setLoading(false);
         },
       }),
     );
   }
 
-  let onHover = useCallback(id => {
+  const onHover = useCallback(id => {
     setHoveredRule(id);
   }, []);
-
-  if (rules === null) {
-    return null;
-  }
 
   return (
     <SelectedProvider instance={selectedInst}>
@@ -276,36 +267,40 @@ function ManageRulesContent({
           >
             <Text>
               Rules are always run in the order that you see them.{' '}
-              <ExternalLink
+              <Link
+                variant="external"
                 to="https://actualbudget.org/docs/budgeting/rules/"
                 linkColor="muted"
               >
                 Learn more
-              </ExternalLink>
+              </Link>
             </Text>
           </View>
           <View style={{ flex: 1 }} />
           <Search
             placeholder="Filter rules..."
             value={filter}
-            onChange={setFilter}
+            onChange={onSearchChange}
           />
         </View>
         <View style={{ flex: 1 }}>
           <RulesHeader />
           <SimpleTable
-            data={filteredRules}
             loadMore={loadMore}
             // Hide the last border of the item in the table
             style={{ marginBottom: -1 }}
           >
-            <RulesList
-              rules={filteredRules}
-              selectedItems={selectedInst.items}
-              hoveredRule={hoveredRule}
-              onHover={onHover}
-              onEditRule={onEditRule}
-            />
+            {filteredRules.length === 0 ? (
+              <EmptyMessage text="No rules" style={{ marginTop: 15 }} />
+            ) : (
+              <RulesList
+                rules={filteredRules}
+                selectedItems={selectedInst.items}
+                hoveredRule={hoveredRule}
+                onHover={onHover}
+                onEditRule={onEditRule}
+              />
+            )}
           </SimpleTable>
         </View>
         <View
@@ -332,13 +327,30 @@ function ManageRulesContent({
   );
 }
 
+function EmptyMessage({ text, style }) {
+  return (
+    <View
+      style={{
+        textAlign: 'center',
+        color: theme.pageTextSubdued,
+        fontStyle: 'italic',
+        fontSize: 13,
+        marginTop: 5,
+        style,
+      }}
+    >
+      {text}
+    </View>
+  );
+}
+
 type ManageRulesProps = {
   isModal: boolean;
   payeeId: string | null;
   setLoading?: Dispatch<SetStateAction<boolean>>;
 };
 
-export default function ManageRules({
+export function ManageRules({
   isModal,
   payeeId,
   setLoading = () => {},

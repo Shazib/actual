@@ -1,16 +1,18 @@
+// @ts-strict-ignore
 import React, {
   type ReactNode,
   createContext,
   useState,
   useContext,
   useEffect,
+  useCallback,
 } from 'react';
 
 import debounce from 'debounce';
 
 type IScrollContext = {
   scrollY: number | undefined;
-  isBottomReached: boolean;
+  hasScrolledToBottom: (tolerance?: number) => boolean;
 };
 
 const ScrollContext = createContext<IScrollContext | undefined>(undefined);
@@ -19,16 +21,22 @@ type ScrollProviderProps = {
   children?: ReactNode;
 };
 
-export default function ScrollProvider({ children }: ScrollProviderProps) {
+export function ScrollProvider({ children }: ScrollProviderProps) {
   const [scrollY, setScrollY] = useState(undefined);
-  const [isBottomReached, setIsBottomReached] = useState(false);
+  const [scrollHeight, setScrollHeight] = useState(undefined);
+  const [clientHeight, setClientHeight] = useState(undefined);
+
+  const hasScrolledToBottom = useCallback(
+    (tolerance = 1) => scrollHeight - scrollY <= clientHeight + tolerance,
+    [clientHeight, scrollHeight, scrollY],
+  );
 
   useEffect(() => {
     const listenToScroll = debounce(e => {
-      setScrollY(e.target?.scrollTop || 0);
-      setIsBottomReached(
-        e.target?.scrollHeight - e.target?.scrollTop <= e.target?.clientHeight,
-      );
+      const target = e.target;
+      setScrollY(target?.scrollTop || 0);
+      setScrollHeight(target?.scrollHeight || 0);
+      setClientHeight(target?.clientHeight || 0);
     }, 10);
 
     window.addEventListener('scroll', listenToScroll, {
@@ -42,10 +50,9 @@ export default function ScrollProvider({ children }: ScrollProviderProps) {
   }, []);
 
   return (
-    <ScrollContext.Provider
-      value={{ scrollY, isBottomReached }}
-      children={children}
-    />
+    <ScrollContext.Provider value={{ scrollY, hasScrolledToBottom }}>
+      {children}
+    </ScrollContext.Provider>
   );
 }
 

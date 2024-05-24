@@ -1,3 +1,4 @@
+// @ts-strict-ignore
 import React from 'react';
 
 import { css } from 'glamor';
@@ -5,9 +6,9 @@ import { css } from 'glamor';
 import { type AccountEntity } from 'loot-core/src/types/models';
 
 import { styles, theme, type CSSProperties } from '../../style';
-import AlignedText from '../common/AlignedText';
-import AnchorLink from '../common/AnchorLink';
-import View from '../common/View';
+import { AlignedText } from '../common/AlignedText';
+import { Link } from '../common/Link';
+import { View } from '../common/View';
 import {
   useDraggable,
   useDroppable,
@@ -16,7 +17,7 @@ import {
   type OnDropCallback,
 } from '../sort';
 import { type Binding } from '../spreadsheet';
-import CellValue from '../spreadsheet/CellValue';
+import { CellValue } from '../spreadsheet/CellValue';
 
 export const accountNameStyle: CSSProperties = {
   marginTop: -2,
@@ -37,6 +38,7 @@ type AccountProps = {
   query: Binding;
   account?: AccountEntity;
   connected?: boolean;
+  pending?: boolean;
   failed?: boolean;
   updated?: boolean;
   style?: CSSProperties;
@@ -45,10 +47,11 @@ type AccountProps = {
   onDrop?: OnDropCallback;
 };
 
-function Account({
+export function Account({
   name,
   account,
   connected,
+  pending = false,
   failed,
   updated,
   to,
@@ -58,25 +61,25 @@ function Account({
   onDragChange,
   onDrop,
 }: AccountProps) {
-  let type = account
+  const type = account
     ? account.closed
       ? 'account-closed'
       : account.offbudget
-      ? 'account-offbudget'
-      : 'account-onbudget'
+        ? 'account-offbudget'
+        : 'account-onbudget'
     : 'title';
 
-  let { dragRef } = useDraggable({
+  const { dragRef } = useDraggable({
     type,
     onDragChange,
     item: { id: account && account.id },
     canDrag: account != null,
   });
 
-  let { dropRef, dropPos } = useDroppable({
+  const { dropRef, dropPos } = useDroppable({
     types: account ? [type] : [],
     id: account && account.id,
-    onDrop: onDrop,
+    onDrop,
   });
 
   return (
@@ -84,7 +87,7 @@ function Account({
       <View>
         <DropHighlight pos={dropPos} />
         <View innerRef={dragRef}>
-          <AnchorLink
+          <Link
             to={to}
             style={{
               ...accountNameStyle,
@@ -124,9 +127,11 @@ function Account({
                   width: 5,
                   height: 5,
                   borderRadius: 5,
-                  backgroundColor: failed
-                    ? theme.sidebarItemBackgroundFailed
-                    : theme.sidebarItemBackgroundPositive,
+                  backgroundColor: pending
+                    ? theme.sidebarItemBackgroundPending
+                    : failed
+                      ? theme.sidebarItemBackgroundFailed
+                      : theme.sidebarItemBackgroundPositive,
                   marginLeft: 2,
                   transition: 'transform .3s',
                   opacity: connected ? 1 : 0,
@@ -138,11 +143,9 @@ function Account({
               left={name}
               right={<CellValue binding={query} type="financial" />}
             />
-          </AnchorLink>
+          </Link>
         </View>
       </View>
     </View>
   );
 }
-
-export default Account;

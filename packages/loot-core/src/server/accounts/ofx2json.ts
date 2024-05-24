@@ -1,3 +1,4 @@
+// @ts-strict-ignore
 import { parseStringPromise } from 'xml2js';
 
 import { dayFromDate } from '../../shared/months';
@@ -28,6 +29,16 @@ function sgml2Xml(sgml) {
     .replace(/<\/<added>(\w+?)>(<\/\1>)?/g, '</$1>'); // Remove duplicate end-tags
 }
 
+function html2Plain(value) {
+  return value
+    ?.replace(/&amp;/g, '&') // ampersands
+    .replace(/&#038;/g, '&') // other ampersands
+    .replace(/&lt;/g, '<') // lessthan
+    .replace(/&gt;/g, '>') // greaterthan
+    .replace(/&#39;/g, "'") // eslint-disable-line rulesdir/typography
+    .replace(/&quot;/g, '"'); // eslint-disable-line rulesdir/typography
+}
+
 async function parseXml(content) {
   return await parseStringPromise(content, { explicitArray: false });
 }
@@ -44,48 +55,49 @@ function getStmtTrn(data) {
 }
 
 function getBankStmtTrn(ofx) {
-  const msg = ofx?.['BANKMSGSRSV1'];
-  const stmtTrnRs = msg?.['STMTTRNRS'];
-  const stmtRs = stmtTrnRs?.['STMTRS'];
-  const tranList = stmtRs?.['BANKTRANLIST'];
-  // Could be an array or a single object.
+  // Somes values could be an array or a single object.
   // xml2js serializes single item to an object and multiple to an array.
-  const stmtTrn = tranList?.['STMTTRN'];
-
-  if (!Array.isArray(stmtTrn)) {
-    return [stmtTrn];
-  }
-  return stmtTrn;
+  const msg = ofx?.['BANKMSGSRSV1'];
+  const stmtTrnRs = getAsArray(msg?.['STMTTRNRS']);
+  const result = stmtTrnRs.flatMap(s => {
+    const stmtRs = s?.['STMTRS'];
+    const tranList = stmtRs?.['BANKTRANLIST'];
+    const stmtTrn = tranList?.['STMTTRN'];
+    return getAsArray(stmtTrn);
+  });
+  return result;
 }
 
 function getCcStmtTrn(ofx) {
-  const msg = ofx?.['CREDITCARDMSGSRSV1'];
-  const stmtTrnRs = msg?.['CCSTMTTRNRS'];
-  const stmtRs = stmtTrnRs?.['CCSTMTRS'];
-  const tranList = stmtRs?.['BANKTRANLIST'];
-  // Could be an array or a single object.
+  // Some values could be an array or a single object.
   // xml2js serializes single item to an object and multiple to an array.
-  const stmtTrn = tranList?.['STMTTRN'];
-
-  if (!Array.isArray(stmtTrn)) {
-    return [stmtTrn];
-  }
-  return stmtTrn;
+  const msg = ofx?.['CREDITCARDMSGSRSV1'];
+  const stmtTrnRs = getAsArray(msg?.['CCSTMTTRNRS']);
+  const result = stmtTrnRs.flatMap(s => {
+    const stmtRs = s?.['CCSTMTRS'];
+    const tranList = stmtRs?.['BANKTRANLIST'];
+    const stmtTrn = tranList?.['STMTTRN'];
+    return getAsArray(stmtTrn);
+  });
+  return result;
 }
 
 function getInvStmtTrn(ofx) {
-  const msg = ofx?.['INVSTMTMSGSRSV1'];
-  const stmtTrnRs = msg?.['INVSTMTTRNRS'];
-  const stmtRs = stmtTrnRs?.['INVSTMTRS'];
-  const tranList = stmtRs?.['INVTRANLIST'];
-  // Could be an array or a single object.
+  // Somes values could be an array or a single object.
   // xml2js serializes single item to an object and multiple to an array.
-  const stmtTrn = tranList?.['INVBANKTRAN']?.flatMap(t => t?.['STMTTRN']);
+  const msg = ofx?.['INVSTMTMSGSRSV1'];
+  const stmtTrnRs = getAsArray(msg?.['INVSTMTTRNRS']);
+  const result = stmtTrnRs.flatMap(s => {
+    const stmtRs = s?.['INVSTMTRS'];
+    const tranList = stmtRs?.['INVTRANLIST'];
+    const stmtTrn = tranList?.['INVBANKTRAN']?.flatMap(t => t?.['STMTTRN']);
+    return getAsArray(stmtTrn);
+  });
+  return result;
+}
 
-  if (!Array.isArray(stmtTrn)) {
-    return [stmtTrn];
-  }
-  return stmtTrn;
+function getAsArray(value) {
+  return Array.isArray(value) ? value : value === undefined ? [] : [value];
 }
 
 function mapOfxTransaction(stmtTrn): OFXTransaction {
@@ -104,12 +116,12 @@ function mapOfxTransaction(stmtTrn): OFXTransaction {
     type: stmtTrn['TRNTYPE'],
     fitId: stmtTrn['FITID'],
     date: dayFromDate(transactionDate),
-    name: stmtTrn['NAME'],
-    memo: stmtTrn['MEMO'],
+    name: html2Plain(stmtTrn['NAME']),
+    memo: html2Plain(stmtTrn['MEMO']),
   };
 }
 
-export default async function parse(ofx: string): Promise<OFXParseResult> {
+export async function ofx2json(ofx: string): Promise<OFXParseResult> {
   // firstly, split into the header attributes and the footer sgml
   const contents = ofx.split('<OFX>', 2);
 
@@ -137,7 +149,7 @@ export default async function parse(ofx: string): Promise<OFXParseResult> {
   }
 
   return {
-    headers: headers,
+    headers,
     transactions: getStmtTrn(dataParsed).map(mapOfxTransaction),
   };
 }

@@ -1,19 +1,19 @@
 import { useSelector } from 'react-redux';
 
+import { type State } from 'loot-core/src/client/state-types';
 import type { FeatureFlag } from 'loot-core/src/types/prefs';
 
 const DEFAULT_FEATURE_FLAG_STATE: Record<FeatureFlag, boolean> = {
-  categorySpendingReport: false,
-  sankeyReport: false,
   reportBudget: false,
   goalTemplatesEnabled: false,
-  themes: false,
   customReports: false,
-  experimentalOfxParser: true,
+  spendingReport: false,
+  simpleFinSync: false,
+  splitsInRules: false,
 };
 
-export default function useFeatureFlag(name: FeatureFlag): boolean {
-  return useSelector(state => {
+export function useFeatureFlag(name: FeatureFlag): boolean {
+  return useSelector((state: State) => {
     const value = state.prefs.local[`flags.${name}`];
 
     return value === undefined

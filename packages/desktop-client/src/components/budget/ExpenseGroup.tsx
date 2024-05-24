@@ -1,7 +1,8 @@
+// @ts-strict-ignore
 import React, { type ComponentProps } from 'react';
 
 import { theme } from '../../style';
-import View from '../common/View';
+import { View } from '../common/View';
 import {
   useDraggable,
   useDroppable,
@@ -12,8 +13,8 @@ import {
 } from '../sort';
 import { Row, ROW_HEIGHT } from '../table';
 
-import RenderMonths from './RenderMonths';
-import SidebarGroup from './SidebarGroup';
+import { RenderMonths } from './RenderMonths';
+import { SidebarGroup } from './SidebarGroup';
 
 type ExpenseGroupProps = {
   group: ComponentProps<typeof SidebarGroup>['group'];
@@ -33,7 +34,7 @@ type ExpenseGroupProps = {
   onShowNewCategory?: ComponentProps<typeof SidebarGroup>['onShowNewCategory'];
 };
 
-function ExpenseGroup({
+export function ExpenseGroup({
   group,
   collapsed,
   editingCell,
@@ -48,22 +49,22 @@ function ExpenseGroup({
   onToggleCollapse,
   onShowNewCategory,
 }: ExpenseGroupProps) {
-  let dragging = dragState && dragState.item === group;
+  const dragging = dragState && dragState.item === group;
 
-  let { dragRef } = useDraggable({
+  const { dragRef } = useDraggable({
     type: 'group',
     onDragChange,
     item: group,
     canDrag: editingCell === null,
   });
 
-  let { dropRef, dropPos } = useDroppable({
+  const { dropRef, dropPos } = useDroppable({
     types: 'group',
     id: group.id,
     onDrop: onReorderGroup,
   });
 
-  let { dropRef: catDropRef, dropPos: catDropPos } = useDroppable({
+  const { dropRef: catDropRef, dropPos: catDropPos } = useDroppable({
     types: 'category',
     id: group.id,
     onDrop: onReorderCategory,
@@ -131,5 +132,3 @@ function ExpenseGroup({
     </Row>
   );
 }
-
-export default ExpenseGroup;

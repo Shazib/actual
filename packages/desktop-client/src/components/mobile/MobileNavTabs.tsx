@@ -1,26 +1,32 @@
+// @ts-strict-ignore
 import React, { type ComponentType, useEffect } from 'react';
 import { NavLink } from 'react-router-dom';
 import { useSpring, animated, config } from 'react-spring';
 
 import { useDrag } from '@use-gesture/react';
 
-import usePrevious from '../../hooks/usePrevious';
-import Add from '../../icons/v1/Add';
-import Cog from '../../icons/v1/Cog';
-import PiggyBank from '../../icons/v1/PiggyBank';
-import StoreFront from '../../icons/v1/StoreFront';
-import Tuning from '../../icons/v1/Tuning';
-import Wallet from '../../icons/v1/Wallet';
-import Calendar from '../../icons/v2/Calendar';
+import { usePrevious } from '../../hooks/usePrevious';
+import {
+  SvgAdd,
+  SvgCog,
+  SvgPiggyBank,
+  SvgStoreFront,
+  SvgTuning,
+  SvgWallet,
+} from '../../icons/v1';
+import { SvgReports } from '../../icons/v1/Reports';
+import { SvgCalendar } from '../../icons/v2';
 import { useResponsive } from '../../ResponsiveProvider';
 import { theme, styles, type CSSProperties } from '../../style';
-import View from '../common/View';
+import { View } from '../common/View';
 import { useScroll } from '../ScrollProvider';
 
-const ROW_HEIGHT = 70;
 const COLUMN_COUNT = 3;
+const PILL_HEIGHT = 15;
+const ROW_HEIGHT = 70;
+export const MOBILE_NAV_HEIGHT = ROW_HEIGHT + PILL_HEIGHT;
 
-export default function MobileNavTabs() {
+export function MobileNavTabs() {
   const { isNarrowWidth } = useResponsive();
   const { scrollY } = useScroll();
 
@@ -35,43 +41,49 @@ export default function MobileNavTabs() {
       name: 'Budget',
       path: '/budget',
       style: navTabStyle,
-      icon: Wallet,
+      Icon: SvgWallet,
     },
     {
       name: 'Transaction',
       path: '/transactions/new',
       style: navTabStyle,
-      icon: Add,
+      Icon: SvgAdd,
     },
     {
       name: 'Accounts',
       path: '/accounts',
       style: navTabStyle,
-      icon: PiggyBank,
+      Icon: SvgPiggyBank,
+    },
+    {
+      name: 'Reports',
+      path: '/reports',
+      style: navTabStyle,
+      Icon: SvgReports,
     },
     {
       name: 'Schedules (Soon)',
       path: '/schedules/soon',
       style: navTabStyle,
-      icon: Calendar,
+      Icon: SvgCalendar,
     },
     {
       name: 'Payees (Soon)',
       path: '/payees/soon',
       style: navTabStyle,
-      icon: StoreFront,
+      Icon: SvgStoreFront,
     },
     {
       name: 'Rules (Soon)',
       path: '/rules/soon',
       style: navTabStyle,
-      icon: Tuning,
+      Icon: SvgTuning,
     },
     {
       name: 'Settings',
       path: '/settings',
       style: navTabStyle,
-      icon: Cog,
+      Icon: SvgCog,
     },
   ].map(tab => <NavTab key={tab.path} {...tab} />);
 
@@ -176,7 +188,7 @@ export default function MobileNavTabs() {
         backgroundColor: theme.mobileNavBackground,
         borderTop: `1px solid ${theme.menuBorder}`,
         ...styles.shadow,
-        height: totalHeight,
+        height: totalHeight + PILL_HEIGHT,
         width: '100%',
         position: 'fixed',
         zIndex: 100,
@@ -184,15 +196,28 @@ export default function MobileNavTabs() {
         ...(!isNarrowWidth && { display: 'none' }),
       }}
     >
-      <View
-        style={{
-          flexDirection: 'row',
-          flexWrap: 'wrap',
-          height: totalHeight,
-          width: '100%',
-        }}
-      >
-        {[navTabs, bufferTabs]}
+      <View>
+        <div
+          style={{
+            background: theme.pillBorder,
+            borderRadius: 10,
+            width: 30,
+            marginTop: 5,
+            marginBottom: 5,
+            padding: 2,
+            alignSelf: 'center',
+          }}
+        />
+        <View
+          style={{
+            flexDirection: 'row',
+            flexWrap: 'wrap',
+            height: totalHeight,
+            width: '100%',
+          }}
+        >
+          {[navTabs, bufferTabs]}
+        </View>
       </View>
     </animated.div>
   );
@@ -206,11 +231,11 @@ type NavTabIconProps = {
 type NavTabProps = {
   name: string;
   path: string;
-  icon: ComponentType<NavTabIconProps>;
+  Icon: ComponentType<NavTabIconProps>;
   style?: CSSProperties;
 };
 
-function NavTab({ icon: TabIcon, name, path, style }: NavTabProps) {
+function NavTab({ Icon: TabIcon, name, path, style }: NavTabProps) {
   return (
     <NavLink
       to={path}

@@ -1,3 +1,4 @@
+// @ts-strict-ignore
 import React, {
   useContext,
   type CSSProperties,
@@ -7,28 +8,28 @@ import React, {
 import * as monthUtils from 'loot-core/src/shared/months';
 
 import { theme } from '../../style';
-import View from '../common/View';
-import NamespaceContext from '../spreadsheet/NamespaceContext';
+import { View } from '../common/View';
+import { NamespaceContext } from '../spreadsheet/NamespaceContext';
 
 import { MonthsContext } from './MonthsContext';
 
 type RenderMonthsProps = {
-  component?: ComponentType<{ monthIndex: number; editing: boolean }>;
-  editingIndex?: string | number;
+  component?: ComponentType<{ month: string; editing: boolean }>;
+  editingMonth?: string;
   args?: object;
   style?: CSSProperties;
 };
 
-function RenderMonths({
+export function RenderMonths({
   component: Component,
-  editingIndex,
+  editingMonth,
   args,
   style,
 }: RenderMonthsProps) {
-  let { months } = useContext(MonthsContext);
+  const { months } = useContext(MonthsContext);
 
   return months.map((month, index) => {
-    let editing = editingIndex === index;
+    const editing = editingMonth === month;
 
     return (
       <NamespaceContext.Provider
@@ -42,11 +43,9 @@ function RenderMonths({
             ...style,
           }}
         >
-          <Component monthIndex={index} editing={editing} {...args} />
+          <Component month={month} editing={editing} {...args} />
         </View>
       </NamespaceContext.Provider>
     );
   }) as unknown as JSX.Element;
 }
-
-export default RenderMonths;

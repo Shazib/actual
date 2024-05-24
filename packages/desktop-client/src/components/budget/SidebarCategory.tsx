@@ -1,19 +1,24 @@
-import React, { type CSSProperties, type Ref, useState } from 'react';
+// @ts-strict-ignore
+import React, { type CSSProperties, type Ref, useRef, useState } from 'react';
 
-import { type CategoryEntity } from 'loot-core/src/types/models';
+import {
+  type CategoryGroupEntity,
+  type CategoryEntity,
+} from 'loot-core/src/types/models';
 
-import CheveronDown from '../../icons/v1/CheveronDown';
+import { SvgCheveronDown } from '../../icons/v1';
 import { theme } from '../../style';
-import Button from '../common/Button';
-import Menu from '../common/Menu';
-import View from '../common/View';
-import NotesButton from '../NotesButton';
+import { Button } from '../common/Button';
+import { Menu } from '../common/Menu';
+import { Popover } from '../common/Popover';
+import { View } from '../common/View';
+import { NotesButton } from '../NotesButton';
 import { InputCell } from '../table';
-import { Tooltip } from '../tooltips';
 
 type SidebarCategoryProps = {
   innerRef: Ref<HTMLDivElement>;
   category: CategoryEntity;
+  categoryGroup?: CategoryGroupEntity;
   dragPreview?: boolean;
   dragging?: boolean;
   editing: boolean;
@@ -21,14 +26,15 @@ type SidebarCategoryProps = {
   borderColor?: string;
   isLast?: boolean;
   onEditName: (id: string) => void;
-  onSave: (group) => void;
+  onSave: (category: CategoryEntity) => void;
   onDelete: (id: string) => Promise<void>;
   onHideNewCategory?: () => void;
 };
 
-function SidebarCategory({
+export function SidebarCategory({
   innerRef,
   category,
+  categoryGroup,
   dragPreview,
   dragging,
   editing,
@@ -41,6 +47,7 @@ function SidebarCategory({
 }: SidebarCategoryProps) {
   const temporary = category.id === 'new';
   const [menuOpen, setMenuOpen] = useState(false);
+  const triggerRef = useRef(null);
 
   const displayed = (
     <View
@@ -49,7 +56,7 @@ function SidebarCategory({
         alignItems: 'center',
         userSelect: 'none',
         WebkitUserSelect: 'none',
-        opacity: category.hidden ? 0.33 : undefined,
+        opacity: category.hidden || categoryGroup?.hidden ? 0.33 : undefined,
       }}
     >
       <div
@@ -63,56 +70,60 @@ function SidebarCategory({
       >
         {category.name}
       </div>
-      <View style={{ flexShrink: 0, marginLeft: 5 }}>
+      <View style={{ flexShrink: 0, marginLeft: 5 }} ref={triggerRef}>
         <Button
           type="bare"
+          className="hover-visible"
           onClick={e => {
             e.stopPropagation();
             setMenuOpen(true);
           }}
           style={{ color: 'currentColor', padding: 3 }}
         >
-          <CheveronDown
+          <SvgCheveronDown
             width={14}
             height={14}
             style={{ color: 'currentColor' }}
           />
         </Button>
-        {menuOpen && (
-          <Tooltip
-            position="bottom-left"
-            width={200}
-            style={{ padding: 0 }}
-            onClose={() => setMenuOpen(false)}
-          >
-            <Menu
-              onMenuSelect={type => {
-                if (type === 'rename') {
-                  onEditName(category.id);
-                } else if (type === 'delete') {
-                  onDelete(category.id);
-                } else if (type === 'toggle-visibility') {
-                  onSave({ ...category, hidden: !category.hidden });
-                }
-                setMenuOpen(false);
-              }}
-              items={[
-                {
-                  name: 'toggle-visibility',
-                  text: category.hidden ? 'Show' : 'Hide',
-                },
-                { name: 'rename', text: 'Rename' },
-                { name: 'delete', text: 'Delete' },
-              ]}
-            />
-          </Tooltip>
-        )}
+
+        <Popover
+          triggerRef={triggerRef}
+          placement="bottom start"
+          isOpen={menuOpen}
+          onOpenChange={() => setMenuOpen(false)}
+          style={{ width: 200 }}
+        >
+          <Menu
+            onMenuSelect={type => {
+              if (type === 'rename') {
+                onEditName(category.id);
+              } else if (type === 'delete') {
+                onDelete(category.id);
+              } else if (type === 'toggle-visibility') {
+                onSave({ ...category, hidden: !category.hidden });
+              }
+              setMenuOpen(false);
+            }}
+            items={[
+              !categoryGroup?.hidden && {
+                name: 'toggle-visibility',
+                text: category.hidden ? 'Show' : 'Hide',
+              },
+              { name: 'rename', text: 'Rename' },
+              { name: 'delete', text: 'Delete' },
+            ]}
+          />
+        </Popover>
       </View>
       <View style={{ flex: 1 }} />
-      <NotesButton
-        id={category.id}
-        style={dragging && { color: 'currentColor' }}
-      />
+      <View style={{ flexShrink: 0 }}>
+        <NotesButton
+          id={category.id}
+          style={dragging && { color: 'currentColor' }}
+          defaultColor={theme.pageTextLight}
+        />
+      </View>
     </View>
   );
 
@@ -121,10 +132,15 @@ function SidebarCategory({
       innerRef={innerRef}
       style={{
         width: 200,
-        '& button': { display: 'none' },
+        overflow: 'hidden',
+        '& .hover-visible': {
+          display: 'none',
+        },
         ...(!dragging &&
           !dragPreview && {
-            '&:hover button': { display: 'flex', color: theme.tableTextHover },
+            '&:hover .hover-visible': {
+              display: 'flex',
+            },
           }),
         ...(dragging && { color: theme.formInputTextPlaceholderSelected }),
         // The zIndex here forces the the view on top of a row below
@@ -146,7 +162,7 @@ function SidebarCategory({
     >
       <InputCell
         value={category.name}
-        formatter={value => displayed}
+        formatter={() => displayed}
         width="flex"
         exposed={editing || temporary}
         onUpdate={value => {
@@ -171,5 +187,3 @@ function SidebarCategory({
     </View>
   );
 }
-
-export default SidebarCategory;

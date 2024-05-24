@@ -1,9 +1,13 @@
+// @ts-strict-ignore
 import React, { type ComponentProps } from 'react';
 
-import { type CategoryEntity } from 'loot-core/src/types/models';
+import {
+  type CategoryGroupEntity,
+  type CategoryEntity,
+} from 'loot-core/src/types/models';
 
 import { theme } from '../../style';
-import View from '../common/View';
+import { View } from '../common/View';
 import {
   useDraggable,
   useDroppable,
@@ -14,26 +18,28 @@ import {
 } from '../sort';
 import { Row } from '../table';
 
-import RenderMonths from './RenderMonths';
-import SidebarCategory from './SidebarCategory';
+import { RenderMonths } from './RenderMonths';
+import { SidebarCategory } from './SidebarCategory';
 
 type ExpenseCategoryProps = {
   cat: CategoryEntity;
+  categoryGroup?: CategoryGroupEntity;
   editingCell: { id: string; cell: string } | null;
   dragState: DragState<CategoryEntity>;
   MonthComponent: ComponentProps<typeof RenderMonths>['component'];
   onEditName?: ComponentProps<typeof SidebarCategory>['onEditName'];
-  onEditMonth?: (id: string, monthIndex: number) => void;
+  onEditMonth?: (id: string, month: string) => void;
   onSave?: ComponentProps<typeof SidebarCategory>['onSave'];
   onDelete?: ComponentProps<typeof SidebarCategory>['onDelete'];
   onDragChange: OnDragChangeCallback<CategoryEntity>;
-  onBudgetAction: (idx: number, action: string, arg: unknown) => void;
-  onShowActivity: (name: string, id: string, idx: number) => void;
+  onBudgetAction: (month: number, action: string, arg: unknown) => void;
+  onShowActivity: (id: string, month: string) => void;
   onReorder: OnDropCallback;
 };
 
-function ExpenseCategory({
+export function ExpenseCategory({
   cat,
+  categoryGroup,
   editingCell,
   dragState,
   MonthComponent,
@@ -52,14 +58,14 @@ function ExpenseCategory({
     dragging = true;
   }
 
-  let { dragRef } = useDraggable({
+  const { dragRef } = useDraggable({
     type: 'category',
     onDragChange,
     item: cat,
     canDrag: editingCell === null,
   });
 
-  let { dropRef, dropPos } = useDroppable({
+  const { dropRef, dropPos } = useDroppable({
     types: 'category',
     id: cat.id,
     onDrop: onReorder,
@@ -71,7 +77,7 @@ function ExpenseCategory({
       collapsed={true}
       style={{
         backgroundColor: theme.tableBackground,
-        opacity: cat.hidden ? 0.5 : undefined,
+        opacity: cat.hidden || categoryGroup?.hidden ? 0.5 : undefined,
       }}
     >
       <DropHighlight pos={dropPos} offset={{ top: 1 }} />
@@ -80,6 +86,7 @@ function ExpenseCategory({
         <SidebarCategory
           innerRef={dragRef}
           category={cat}
+          categoryGroup={categoryGroup}
           dragPreview={dragging && dragState.preview}
           dragging={dragging && !dragState.preview}
           editing={
@@ -94,7 +101,7 @@ function ExpenseCategory({
 
         <RenderMonths
           component={MonthComponent}
-          editingIndex={
+          editingMonth={
             editingCell && editingCell.id === cat.id && editingCell.cell
           }
           args={{
@@ -108,5 +115,3 @@ function ExpenseCategory({
     </Row>
   );
 }
-
-export default ExpenseCategory;
